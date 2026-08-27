@@ -23,6 +23,7 @@ def run_popularity_baseline(
     train_end: str,
     validation_start: str,
     validation_end: str,
+    training_start: str | None = None,
     k: int = 12,
     threads: int = 2,
 ) -> dict[str, Any]:
@@ -54,10 +55,16 @@ def run_popularity_baseline(
         )
     """)
 
+    training_filter = f"transaction_date <= DATE '{train_end}'"
+    if training_start is not None:
+        training_filter = (
+            f"transaction_date BETWEEN DATE '{training_start}' AND DATE '{train_end}'"
+        )
+
     top_rows = con.sql(f"""
         SELECT article_id, COUNT(*) AS purchase_count
         FROM transactions
-        WHERE transaction_date <= DATE '{train_end}'
+        WHERE {training_filter}
         GROUP BY article_id
         ORDER BY purchase_count DESC, article_id ASC
         LIMIT {k}
@@ -111,6 +118,7 @@ def run_popularity_baseline(
     result: dict[str, Any] = {
         "definition": {
             "score": "training purchase row count",
+            "training_start": training_start,
             "train_end": train_end,
             "validation_start": validation_start,
             "validation_end": validation_end,

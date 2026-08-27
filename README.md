@@ -213,3 +213,9 @@ The first all-history global-popularity result is recorded in [`reports/populari
 python -m unittest discover -s tests -v
 python scripts/run_popularity_baseline.py
 ```
+
+The controlled seven-day recency comparison is recorded in [`reports/recent_popularity_7d.md`](reports/recent_popularity_7d.md). Reproduce it with:
+
+```bash
+python scripts/run_recent_popularity_7d.py
+```
