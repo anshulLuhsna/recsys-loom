@@ -219,3 +219,9 @@ The controlled seven-day recency comparison is recorded in [`reports/recent_popu
 ```bash
 python scripts/run_recent_popularity_7d.py
 ```
+
+The stability check across eight consecutive chronological weeks is recorded in [`reports/popularity_backtest_8w.md`](reports/popularity_backtest_8w.md). Reproduce it with:
+
+```bash
+python scripts/run_popularity_backtest.py
+```

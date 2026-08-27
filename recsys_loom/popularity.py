@@ -26,6 +26,7 @@ def run_popularity_baseline(
     training_start: str | None = None,
     k: int = 12,
     threads: int = 2,
+    write_predictions: bool = True,
 ) -> dict[str, Any]:
     """Fit global purchase-count popularity and score the hidden validation week."""
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -149,14 +150,15 @@ def run_popularity_baseline(
         "unique_validation_labels": sum(map(len, relevant_by_customer.values())),
     }
 
-    with (output_directory / "predictions.csv").open(
-        "w", newline="", encoding="utf-8"
-    ) as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["customer_id", "prediction"])
-        joined_prediction = " ".join(prediction)
-        for customer_id in relevant_by_customer:
-            writer.writerow([customer_id, joined_prediction])
+    if write_predictions:
+        with (output_directory / "predictions.csv").open(
+            "w", newline="", encoding="utf-8"
+        ) as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["customer_id", "prediction"])
+            joined_prediction = " ".join(prediction)
+            for customer_id in relevant_by_customer:
+                writer.writerow([customer_id, joined_prediction])
 
     with (output_directory / "metrics.json").open("w", encoding="utf-8") as handle:
         json.dump(result, handle, indent=2)

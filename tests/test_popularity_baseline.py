@@ -83,12 +83,15 @@ class PopularityBaselineTests(unittest.TestCase):
                 validation_end="2020-09-22",
                 k=1,
                 threads=1,
+                write_predictions=False,
             )
 
             self.assertEqual(
                 result["top_articles"],
                 [{"article_id": "article-b", "purchase_count": 2}],
             )
+            self.assertTrue((root / "output" / "metrics.json").exists())
+            self.assertFalse((root / "output" / "predictions.csv").exists())
 
 
 if __name__ == "__main__":
