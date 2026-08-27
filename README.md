@@ -191,3 +191,25 @@ Reproducible metrics and predictions
 ```
 
 Images, collaborative filtering, learned rankers, and LLM components wait until this loop is trustworthy.
+
+## Data audit
+
+The first read-only audit of the local H&M CSV files is reproducible with DuckDB 1.5.5:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python scripts/data_audit.py
+```
+
+The generated measurements are recorded in [`reports/data_audit.md`](reports/data_audit.md). Their modeling implications and unresolved decisions are recorded separately in [`reports/data_audit_findings.md`](reports/data_audit_findings.md).
+
+Small machine-readable query outputs are written under `artifacts/data_audit/` and intentionally ignored by Git. The raw CSV files are read directly and are never modified.
+
+The first all-history global-popularity result is recorded in [`reports/popularity_baseline.md`](reports/popularity_baseline.md). Reproduce it with:
+
+```bash
+python -m unittest discover -s tests -v
+python scripts/run_popularity_baseline.py
+```

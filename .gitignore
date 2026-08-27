@@ -1,2 +1,8 @@
 AGENTS.md
 *.csv
+.venv/
+artifacts/
+*.duckdb
+*.duckdb.wal
+__pycache__/
+*.py[cod]
