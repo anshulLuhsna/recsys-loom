@@ -15,6 +15,7 @@ from recsys_loom.overnight.protocol import (
     CACHE_DIR,
     DEV_CUSTOMERS,
     EXISTING_SOURCE_BUDGET,
+    EXTRA_TRAINING_SNAPSHOTS,
     POPULARITY_BUDGET,
     ROOT,
     SNAPSHOTS,
@@ -47,33 +48,40 @@ def history_bucket(count: int) -> str:
     return "20+"
 
 
-def development_specs(customer_count: int = DEV_CUSTOMERS) -> list[SnapshotSpec]:
-    specifications: list[SnapshotSpec] = []
-    for snapshot in SNAPSHOTS:
-        cutoff = snapshot["cutoff"]
-        specifications.append(
-            SnapshotSpec(
-                cutoff=cutoff,
-                target_start=snapshot["target_start"],
-                target_end=snapshot["target_end"],
-                customer_count=customer_count,
-                existing_candidates_path=(
-                    ROOT
-                    / "artifacts"
-                    / "ranking"
-                    / "candidate_cache"
-                    / f"existing_{cutoff}_{customer_count}.tsv.gz"
-                ),
-                two_tower_candidates_path=(
-                    ROOT
-                    / "artifacts"
-                    / "two_tower"
-                    / "ranking_snapshots"
-                    / f"candidates_{cutoff}_{customer_count}.tsv.gz"
-                ),
-            )
-        )
-    return specifications
+def snapshot_spec(snapshot: dict[str, str], customer_count: int) -> SnapshotSpec:
+    cutoff = snapshot["cutoff"]
+    return SnapshotSpec(
+        cutoff=cutoff,
+        target_start=snapshot["target_start"],
+        target_end=snapshot["target_end"],
+        customer_count=customer_count,
+        existing_candidates_path=(
+            ROOT
+            / "artifacts"
+            / "ranking"
+            / "candidate_cache"
+            / f"existing_{cutoff}_{customer_count}.tsv.gz"
+        ),
+        two_tower_candidates_path=(
+            ROOT
+            / "artifacts"
+            / "two_tower"
+            / "ranking_snapshots"
+            / f"candidates_{cutoff}_{customer_count}.tsv.gz"
+        ),
+    )
+
+
+def development_specs(
+    customer_count: int = DEV_CUSTOMERS,
+    include_extra_training: bool = False,
+) -> list[SnapshotSpec]:
+    snapshots = (
+        [*EXTRA_TRAINING_SNAPSHOTS, *SNAPSHOTS]
+        if include_extra_training
+        else list(SNAPSHOTS)
+    )
+    return [snapshot_spec(snapshot, customer_count) for snapshot in snapshots]
 
 
 def apply_budget(
@@ -384,6 +392,7 @@ def ranking_metrics(
 def fit_ranker(
     train_snapshots: list[dict[str, NDArray]],
     validation: dict[str, NDArray] | None = None,
+    params_update: dict[str, Any] | None = None,
     **train_kwargs: Any,
 ) -> Any:
     train = combine_training(train_snapshots)
@@ -399,6 +408,7 @@ def fit_ranker(
         valid_labels,
         valid_groups,
         verbose=train_kwargs.pop("verbose", 0),
+        params_update=params_update,
         **train_kwargs,
     )
     del train

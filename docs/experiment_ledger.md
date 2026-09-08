@@ -5,5 +5,5 @@ Final metric: reserved unused-customer holdout on 2020-09-16..22. Do not inspect
 
 | experiment | hypothesis | change | development result | final result | decision | reason | commit |
 |---|---|---|---|---|---|---|---|
-| evaluation integrity | previously viewed Sep 16–22 metrics are not a pristine holdout | ledger + unused-customer reservation | no unused calendar week remains | pending | keep customer-holdout protocol | dataset ends 2020-09-22 | pending |
-| BASELINE_RANKER | current six-source LambdaRank is the controlled starting point | freeze TT K=50 + existing LightGBM params | pending | not for selection | pending | pending | pending |
+| evaluation integrity | previously viewed Sep 16–22 metrics are not a pristine holdout | ledger + unused-customer reservation | no unused calendar week; 8,000 unused buyers reserved | not inspected | keep customer-holdout protocol | dataset ends 2020-09-22 | 0aa49c6 |
+| BASELINE_RANKER | current six-source LambdaRank is the controlled starting point | freeze TT K=50 + existing LightGBM params | mean MAP@12 0.02707 (0.02638 / 0.02776) | not for selection | keep | matches prior TT-K=50 earlier-fold mean | pending |

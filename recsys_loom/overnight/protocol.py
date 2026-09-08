@@ -49,9 +49,39 @@ SNAPSHOTS = [
 
 # Already used to select two-tower K=50. Still the cleanest development
 # windows available; do not treat them as unseen final test.
+# Extra earlier weeks used only to scale ranking supervision.
+# They are never selection or final-evaluation windows.
+EXTRA_TRAINING_SNAPSHOTS = [
+    {
+        "cutoff": "2020-08-03",
+        "target_start": "2020-08-04",
+        "target_end": "2020-08-10",
+    },
+    {
+        "cutoff": "2020-08-10",
+        "target_start": "2020-08-11",
+        "target_end": "2020-08-17",
+    },
+]
+
 SELECTION_FOLDS = [2, 3]
 CONTAMINATED_FINAL_FOLD = 4
 DEV_CUSTOMERS = 2000
+
+
+def fold_offset(include_extra_training: bool) -> int:
+    return len(EXTRA_TRAINING_SNAPSHOTS) if include_extra_training else 0
+
+
+def selection_fold_indices(include_extra_training: bool = False) -> list[int]:
+    offset = fold_offset(include_extra_training)
+    return [offset + index for index in SELECTION_FOLDS]
+
+
+def contaminated_fold_index(include_extra_training: bool = False) -> int:
+    return fold_offset(include_extra_training) + CONTAMINATED_FINAL_FOLD
+
+
 TT_BUDGET = 50
 POPULARITY_BUDGET = 100
 EXISTING_SOURCE_BUDGET = 500

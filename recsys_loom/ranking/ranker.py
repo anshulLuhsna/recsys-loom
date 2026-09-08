@@ -74,6 +74,7 @@ def train_ranker(
     num_leaves: int = 63,
     min_child_samples: int = 50,
     verbose: int = 25,
+    params_update: dict | None = None,
 ) -> lgb.Booster:
     """Train a LambdaRank model."""
     train_data = lgb.Dataset(
@@ -106,6 +107,8 @@ def train_ranker(
         "verbose": -1,
         "seed": 42,
     }
+    if params_update:
+        params.update(params_update)
 
     callbacks = []
     if verbose > 0:
