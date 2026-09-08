@@ -22,8 +22,12 @@ from recsys_loom.overnight.ranking import (
     apply_baseline_budget,
     development_specs,
     evaluate_model,
-    fit_ranker,
     load_or_build_snapshot,
+)
+from recsys_loom.overnight.serve import (
+    fit_from_spec,
+    transform_snapshot,
+    uses_extra_training,
 )
 from recsys_loom.ranking.cached_data import SnapshotSpec
 
@@ -65,18 +69,26 @@ def main() -> None:
         print(json.dumps(report, indent=2))
         return
 
+    spec = load_spec()
+    if spec.get("status") != "frozen_for_holdout":
+        raise SystemExit("Freeze BEST_SYSTEM from development reports before holdout")
     connection = connect()
     article_ids = catalog_article_ids(connection)
     article_to_index = {
         article_id: index for index, article_id in enumerate(article_ids)
     }
     train_snapshots = []
-    for specification in development_specs(DEV_CUSTOMERS)[:4]:
+    for specification in development_specs(
+        DEV_CUSTOMERS,
+        include_extra_training=uses_extra_training(spec),
+    ):
+        if specification.cutoff == "2020-09-15":
+            continue
         data, _relevance = load_or_build_snapshot(
             connection, specification, article_to_index
         )
         train_snapshots.append(apply_baseline_budget(data))
-    model = fit_ranker(train_snapshots)
+    model = fit_from_spec(train_snapshots, spec)
     batch_results = []
     for specification in specs:
         data, relevance = load_or_build_snapshot(
@@ -85,7 +97,11 @@ def main() -> None:
             article_to_index,
             cache_tag=specification.existing_candidates_path.stem,
         )
-        validation = apply_baseline_budget(data)
+        validation = transform_snapshot(
+            apply_baseline_budget(data),
+            spec,
+            training=False,
+        )
         result = evaluate_model(model, validation, relevance, article_ids)
         result.pop("scores", None)
         batch_results.append(

@@ -13,17 +13,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from recsys_loom.overnight.db import catalog_article_ids, connect
-from recsys_loom.overnight.protocol import (
-    CONTAMINATED_FINAL_FOLD,
-    DEV_CUSTOMERS,
-    OVERNIGHT_DIR,
-    ensure_directories,
-)
+from recsys_loom.overnight.protocol import DEV_CUSTOMERS, OVERNIGHT_DIR, ensure_directories
+from recsys_loom.overnight.best_system import load_spec
 from recsys_loom.overnight.ranking import (
     apply_baseline_budget,
     development_specs,
-    fit_ranker,
     load_or_build_snapshot,
+)
+from recsys_loom.overnight.serve import (
+    fit_from_spec,
+    transform_snapshot,
+    uses_extra_training,
 )
 from recsys_loom.search.catalog import load_articles
 
@@ -60,14 +60,29 @@ def main() -> None:
         article_id: index for index, article_id in enumerate(article_ids)
     }
     catalog = load_articles()
+    spec = load_spec()
+    specifications = development_specs(
+        DEV_CUSTOMERS,
+        include_extra_training=uses_extra_training(spec),
+    )
     snapshots = []
-    for specification in development_specs(DEV_CUSTOMERS):
+    for specification in specifications:
         data, _relevance = load_or_build_snapshot(
             connection, specification, article_to_index
         )
         snapshots.append(apply_baseline_budget(data))
-    model = fit_ranker(snapshots[:CONTAMINATED_FINAL_FOLD])
-    serving = snapshots[CONTAMINATED_FINAL_FOLD]
+    train = [
+        snapshot
+        for snapshot, specification in zip(snapshots, specifications)
+        if specification.cutoff != "2020-09-15"
+    ]
+    serving_raw = next(
+        snapshot
+        for snapshot, specification in zip(snapshots, specifications)
+        if specification.cutoff == "2020-09-15"
+    )
+    model = fit_from_spec(train, spec)
+    serving = transform_snapshot(serving_raw, spec, training=False)
     scores = np.asarray(model.predict(serving["features"]), dtype=np.float32)
     names = [str(value) for value in serving["feature_names"]]
     chosen: list[dict[str, object]] = []
@@ -125,7 +140,7 @@ def main() -> None:
         )
         payload = {
             "customer_id": customer_id,
-            "model_version": "baseline_lambdarank_tt50",
+            "model_version": str(spec.get("name", "BEST_SYSTEM")),
             "candidate_count": int(end - start),
             "latency_ms": 0.0,
             "recommendations": recs,

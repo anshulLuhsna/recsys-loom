@@ -28,20 +28,8 @@ from recsys_loom.overnight.ranking import (
     evaluate_model,
     load_or_build_snapshot,
 )
+from recsys_loom.overnight.transforms import weighted_labels
 from recsys_loom.ranking.ranker import train_ranker
-
-
-def weighted_labels(data: dict[str, np.ndarray]) -> np.ndarray:
-    names = [str(value) for value in data["feature_names"]]
-    popularity = np.nan_to_num(
-        data["features"][:, names.index("item_purchases_30d")],
-        nan=0.0,
-    )
-    weights = np.ones(len(data["labels"]), dtype=np.float32)
-    positive = data["labels"] > 0
-    weights[positive] = 1.0 / np.sqrt(np.maximum(popularity[positive], 1.0))
-    weights = np.clip(weights, 0.25, 4.0)
-    return data["labels"].astype(np.float32) * weights
 
 
 def run_arm(train_snapshots, validation, relevance, article_ids, weighted: bool):

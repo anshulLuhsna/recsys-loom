@@ -28,82 +28,7 @@ from recsys_loom.overnight.ranking import (
     fit_ranker,
     load_or_build_snapshot,
 )
-
-
-def downsample_group(
-    features: np.ndarray,
-    labels: np.ndarray,
-    article_indices: np.ndarray,
-    feature_index: dict[str, int],
-    hard: int,
-    random: int,
-    rng: np.random.Generator,
-) -> np.ndarray:
-    positive = np.flatnonzero(labels > 0)
-    negative = np.flatnonzero(labels == 0)
-    if len(negative) == 0:
-        return np.ones(len(labels), dtype=np.bool_)
-    hardness = (
-        features[negative, feature_index["num_sources"]]
-        + np.nan_to_num(features[negative, feature_index["score_als"]], nan=0.0)
-        + np.nan_to_num(
-            features[negative, feature_index["score_two_tower"]], nan=0.0
-        )
-    )
-    hard_take = min(hard, len(negative))
-    hard_local = np.argpartition(-hardness, hard_take - 1)[:hard_take]
-    remaining = np.setdiff1d(np.arange(len(negative)), hard_local, assume_unique=False)
-    random_take = min(random, len(remaining))
-    random_local = (
-        rng.choice(remaining, size=random_take, replace=False)
-        if random_take
-        else np.asarray([], dtype=np.int64)
-    )
-    keep = np.zeros(len(labels), dtype=np.bool_)
-    keep[positive] = True
-    keep[negative[hard_local]] = True
-    keep[negative[random_local]] = True
-    return keep
-
-
-def downsample_snapshot(
-    data: dict[str, np.ndarray],
-    hard: int,
-    random: int,
-    seed: int,
-) -> dict[str, np.ndarray]:
-    feature_index = {
-        str(name): index for index, name in enumerate(data["feature_names"])
-    }
-    rng = np.random.default_rng(seed)
-    keep = np.zeros(len(data["labels"]), dtype=np.bool_)
-    group_sizes: list[int] = []
-    offset = 0
-    for group_index, group_size_value in enumerate(data["groups"]):
-        group_size = int(group_size_value)
-        end = offset + group_size
-        group_keep = downsample_group(
-            data["features"][offset:end],
-            data["labels"][offset:end],
-            data["pair_article_indices"][offset:end],
-            feature_index,
-            hard,
-            random,
-            rng,
-        )
-        keep[offset:end] = group_keep
-        group_sizes.append(int(group_keep.sum()))
-        offset = end
-        _ = group_index
-    return {
-        "features": data["features"][keep],
-        "labels": data["labels"][keep],
-        "groups": np.asarray(group_sizes, dtype=np.int32),
-        "pair_article_indices": data["pair_article_indices"][keep],
-        "customer_ids": data["customer_ids"],
-        "history_buckets": data["history_buckets"],
-        "feature_names": data["feature_names"],
-    }
+from recsys_loom.overnight.transforms import NEGATIVE_SCHEMES, downsample_snapshot
 
 
 def run_arm(
@@ -142,12 +67,7 @@ def main() -> None:
         snapshots.append(apply_baseline_budget(data))
         relevance.append(snapshot_relevance)
 
-    schemes = {
-        "all_candidates": None,
-        "hard50_rand50": (50, 50),
-        "hard100_rand50": (100, 50),
-        "hard50_rand150": (50, 150),
-    }
+    schemes = NEGATIVE_SCHEMES
     report_folds = {name: [] for name in schemes}
     for validation_index in SELECTION_FOLDS:
         cutoff = SNAPSHOTS[validation_index]["cutoff"]
