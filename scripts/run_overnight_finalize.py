@@ -15,20 +15,25 @@ ROOT = Path(__file__).resolve().parents[1]
 PYTHON = sys.executable
 
 STAGES = [
-    "scripts/run_overnight_longtail_weights.py",
-    "scripts/freeze_best_system.py",
-    "scripts/export_holdout_candidates.py",
-    "scripts/run_overnight_holdout_eval.py",
-    "scripts/export_demo_recommendations.py",
+    ["scripts/run_overnight_longtail_weights.py"],
+    ["scripts/freeze_best_system.py"],
+    ["scripts/export_holdout_candidates.py"],
+    ["scripts/run_overnight_holdout_eval.py"],
+    ["scripts/export_demo_recommendations.py"],
+    ["scripts/run_search_ranker.py", "--lexical-only"],
+    ["scripts/write_morning_handoff.py"],
 ]
 
 
 def main() -> None:
-    for script in STAGES:
-        print(f"\n=== {script} ===", flush=True)
-        completed = subprocess.run([PYTHON, str(ROOT / script)], cwd=ROOT)
+    for command in STAGES:
+        print(f"\n=== {' '.join(command)} ===", flush=True)
+        completed = subprocess.run(
+            [PYTHON, str(ROOT / command[0]), *command[1:]],
+            cwd=ROOT,
+        )
         if completed.returncode != 0:
-            raise SystemExit(f"{script} failed with {completed.returncode}")
+            raise SystemExit(f"{command[0]} failed with {completed.returncode}")
 
 
 if __name__ == "__main__":

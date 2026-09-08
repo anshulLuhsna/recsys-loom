@@ -629,6 +629,10 @@ Docker:
 docker compose up --build
 ```
 
+The API image serves FastAPI. The web image is a production Next.js build.
+Mount local `artifacts/`, `articles.csv`, and optional `images/` into the API
+container. Set `SEARCH_SEMANTIC=0` if the MiniLM encoder should not load.
+
 The API loads models and search indices at startup. It does not retrain ALS or
 LambdaRank per request. Raw H&M CSVs and the full image archive stay local and
 are not shipped as Git artifacts. The public demo should use a precomputed
