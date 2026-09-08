@@ -11,9 +11,10 @@ Current development champion is the six-source LightGBM LambdaRank with the
 slower 500-tree schedule (`lr=0.03`, 63 leaves). Mean MAP@12 is **0.02799**
 versus the frozen 300-tree baseline **0.02707** (+0.00092, +3.4% relative).
 That is the only material overnight lift so far. Truncation, wider trees,
-XENDCG, and stronger L2 all lost. Hard-negative, cross, scaled-supervision,
-CatBoost, listwise, long-tail, and group-weight experiments are still running
-or queued. Customer-holdout MAP is not inspected yet.
+XENDCG, stronger L2, and hard-negative downsampling all lost. Cross,
+scaled-supervision, CatBoost, listwise, long-tail, and group-weight
+experiments are still running or queued. Customer-holdout MAP is not
+inspected yet.
 
 ## Evaluation integrity
 
@@ -88,8 +89,8 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | BASELINE_RANKER | done, mean MAP@12 0.02707 |
 | Ranking failure analysis | done |
 | LightGBM tune | **selected `lr03_n500`, mean MAP@12 0.02799** |
-| Hard negatives | running (uses selected 500-tree kwargs) |
-| Targeted crosses | queued |
+| Hard negatives | **reject**; all-candidates 0.02799 vs best downsample 0.02204 |
+| Targeted crosses | running |
 | Scaled supervision | queued (needs Aug 3 / Aug 10 ALS+TT caches) |
 | CatBoost YetiRank | queued |
 | Listwise reranker | queued |
@@ -117,6 +118,18 @@ Official LightGBM tune, development mean MAP@12:
 
 Selection rule: simplest trial within 0.0002 of the best development mean.
 `lr03_n500` is uniquely best. Later stages train with 500 trees and `lr=0.03`.
+
+Hard-negative downsampling, same 500-tree schedule:
+
+| Scheme | Mean MAP@12 | Train rows (Aug 31 fold) |
+|---|---:|---:|
+| all candidates | 0.02799 | 5,350,207 |
+| hard50 + rand50 | 0.01878 | 403,675 |
+| hard100 + rand50 | 0.01815 | 603,675 |
+| hard50 + rand150 | 0.02204 | 803,675 |
+
+Reject. Cutting the 1K+ group to a few hundred negatives throws away the
+easy-negative contrast LambdaRank was using. Keep full candidate groups.
 
 ## Product architecture
 
@@ -181,6 +194,7 @@ hypothesis that would reopen them.
 | `rank_xendcg` | 0.02346 | Reject; LambdaRank remains the objective. |
 | Faster 200-tree / lr=0.10 schedule | 0.02382 | Reject. |
 | 127 leaves or looser/tighter min_child | 0.02494 / 0.02600 / 0.02639 | Reject. |
+| Hard-negative downsampling | 0.01815–0.02204 vs 0.02799 all-candidates | Reject; keep full groups. |
 
 ## Remaining bottleneck
 

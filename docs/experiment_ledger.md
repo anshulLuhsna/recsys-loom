@@ -13,5 +13,6 @@ Final metric: reserved unused-customer holdout on 2020-09-16..22. Do not inspect
 | LightGBM min_child | less/more regularization helps | min_child 20 / 100 | 0.02600 / 0.02639 | not inspected | reject | both below baseline | pending |
 | LightGBM XENDCG | XENDCG beats LambdaRank on MAP@12 | objective=rank_xendcg | 0.02346 | not inspected | reject | worse than LambdaRank | pending |
 | LightGBM L2 | lambda_l2=1.0 regularizes usefully | lambda_l2=1.0 on 300-tree control | 0.02774 | not inspected | reject | below selected 0.02799 by 0.00025 | pending |
+| hard-negative downsampling | hard+random negatives teach finer distinctions than full 1K+ groups | hard50/rand50, hard100/rand50, hard50/rand150 | 0.01878 / 0.01815 / 0.02204 vs 0.02799 | not inspected | reject | full groups win by a wide margin | pending |
 | group weighting | large groups / active users dominate training | 1/sqrt(group size) and 1/sqrt(history) | queued in finalize | not inspected | pending | Stage 3C from overnight prompt | pending |
 | hybrid search baseline | metadata + BM25 can answer structured catalog queries | intent + BM25 + structured (+ optional MiniLM) | synthetic structured P@10=1.0 (tautological); style P@10 0.667 / NDCG 0.775 | n/a | keep as search baseline | no query logs; label as synthetic | c67d77d |
