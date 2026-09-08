@@ -11,10 +11,10 @@ Current development champion is the six-source LightGBM LambdaRank with the
 slower 500-tree schedule (`lr=0.03`, 63 leaves). Mean MAP@12 is **0.02799**
 versus the frozen 300-tree baseline **0.02707** (+0.00092, +3.4% relative).
 That is the only material overnight lift so far. Truncation, wider trees,
-XENDCG, stronger L2, and hard-negative downsampling all lost. Cross,
-scaled-supervision, CatBoost, listwise, long-tail, and group-weight
-experiments are still running or queued. Customer-holdout MAP is not
-inspected yet.
+XENDCG, stronger L2, hard-negative downsampling, and explicit crosses all
+lost. Scaled-supervision, CatBoost, listwise, long-tail, and group-weight
+experiments are still queued. Extra-week ALS+TT export is the current long
+pole. Customer-holdout MAP is not inspected yet.
 
 ## Evaluation integrity
 
@@ -90,7 +90,7 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | Ranking failure analysis | done |
 | LightGBM tune | **selected `lr03_n500`, mean MAP@12 0.02799** |
 | Hard negatives | **reject**; all-candidates 0.02799 vs best downsample 0.02204 |
-| Targeted crosses | running |
+| Targeted crosses | **reject**; 0.02606 vs baseline features 0.02799 |
 | Scaled supervision | queued (needs Aug 3 / Aug 10 ALS+TT caches) |
 | CatBoost YetiRank | queued |
 | Listwise reranker | queued |
@@ -130,6 +130,10 @@ Hard-negative downsampling, same 500-tree schedule:
 
 Reject. Cutting the 1K+ group to a few hundred negatives throws away the
 easy-negative contrast LambdaRank was using. Keep full candidate groups.
+
+Targeted crosses (`ALS×TT`, `TT×sources`, `sources×log pop`, repeat/recency,
+rank gaps) scored **0.02606** vs **0.02799**. LightGBM already captures those
+interactions. Keep the original feature set.
 
 ## Product architecture
 
@@ -195,6 +199,22 @@ hypothesis that would reopen them.
 | Faster 200-tree / lr=0.10 schedule | 0.02382 | Reject. |
 | 127 leaves or looser/tighter min_child | 0.02494 / 0.02600 / 0.02639 | Reject. |
 | Hard-negative downsampling | 0.01815–0.02204 vs 0.02799 all-candidates | Reject; keep full groups. |
+| Explicit ranking crosses | 0.02606 vs 0.02799 baseline features | Reject; trees already interact. |
+
+## Feature / interaction findings
+
+The six-source feature set already includes per-source ranks, scores, source
+count, repeat, recency, and popularity. Adding six explicit crosses made
+development MAP worse (0.02606 vs 0.02799). LightGBM trees were already
+using those relationships. Do not keep the derived columns.
+
+## Data / supervision findings
+
+Hard-negative downsampling reduced training rows from ~5.4M to under 1M and
+hurt MAP by 0.006–0.010. Extra earlier weeks (2020-08-03 and 2020-08-10)
+are being exported now; the scaled-supervision decision waits on those
+caches. If export fails, freeze proceeds with the current four training
+weeks.
 
 ## Remaining bottleneck
 
