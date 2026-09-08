@@ -93,9 +93,13 @@ LightGBM tune so far, development mean MAP@12:
 | baseline | 0.02707 |
 | lambdarank_truncation_level=12 | 0.02313 |
 | lambdarank_truncation_level=20 | 0.02538 |
-| truncation 30 / leaves / min_child / lr / xendcg / L2 | running |
+| lambdarank_truncation_level=30 | 0.02707 |
+| num_leaves=31 | 0.02730 |
+| num_leaves=127 | 0.02494 |
+| min_child_samples=20 | 0.02600 |
+| min_child / lr / xendcg / L2 | running |
 
-Truncating the LambdaRank objective toward Top-12 has not helped. Keep the default truncation unless a later trial wins by more than 0.0002.
+`num_leaves=31` is +0.00023 over baseline, just over the 0.0002 keep-simpler rule. Fold std on baseline is 0.00069, so this may still be noise. Remaining trials must finish before promoting it. Truncation and wider trees have lost.
 
 ## Product architecture
 

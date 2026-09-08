@@ -7,6 +7,8 @@ import torch
 from torch import nn
 from numpy.typing import NDArray
 
+from recsys_loom.metrics import average_precision_at_k
+
 
 class SetReranker(nn.Module):
     def __init__(self, feature_dim: int, hidden_dim: int = 64, heads: int = 4):
@@ -61,6 +63,7 @@ def shortlist_groups(
                 "features": data["features"][offset:end][local],
                 "labels": data["labels"][offset:end][local],
                 "article_indices": data["pair_article_indices"][offset:end][local],
+                "global_indices": np.arange(offset, end)[local],
             }
         )
         offset = end
@@ -160,6 +163,34 @@ def predict_shortlist(
             ]
             predictions[customer_index] = predicted
     return predictions
+
+
+def slate_metrics(
+    predictions: dict[int, list[str]],
+    data: dict[str, NDArray],
+    relevance: dict[str, set[str]],
+    k: int = 12,
+) -> dict[str, float]:
+    aps = []
+    hits = 0
+    customers_with_hit = 0
+    relevant_count = 0
+    for customer_index, customer_id_value in enumerate(data["customer_ids"]):
+        customer_id = str(customer_id_value)
+        predicted = predictions.get(customer_index, [])
+        relevant = relevance.get(customer_id, set())
+        aps.append(average_precision_at_k(relevant, predicted, k))
+        hit_count = len(set(predicted[:k]).intersection(relevant))
+        hits += hit_count
+        customers_with_hit += int(hit_count > 0)
+        relevant_count += len(relevant)
+    customers = len(data["customer_ids"])
+    return {
+        "map_at_12": float(np.mean(aps)) if customers else 0.0,
+        "recall_at_12": hits / relevant_count if relevant_count else 0.0,
+        "hit_rate_at_12": customers_with_hit / customers if customers else 0.0,
+        "customers": customers,
+    }
 
 
 def tiny_overfit_sanity() -> dict[str, float]:

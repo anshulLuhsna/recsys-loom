@@ -22,6 +22,7 @@ from recsys_loom.overnight.ranking import (
 )
 from recsys_loom.overnight.serve import (
     fit_from_spec,
+    predict_scores,
     transform_snapshot,
     uses_extra_training,
 )
@@ -83,7 +84,7 @@ def main() -> None:
     )
     model = fit_from_spec(train, spec)
     serving = transform_snapshot(serving_raw, spec, training=False)
-    scores = np.asarray(model.predict(serving["features"]), dtype=np.float32)
+    scores = predict_scores(model, serving)
     names = [str(value) for value in serving["feature_names"]]
     chosen: list[dict[str, object]] = []
     used = set()

@@ -87,20 +87,12 @@ def main() -> None:
             np.arange(len(train["groups"])),
             train["groups"],
         )
-        valid_group_id = np.repeat(
-            np.arange(len(validation["groups"])),
-            validation["groups"],
-        )
         train_pool = Pool(
             data=np.nan_to_num(train["features"], nan=0.0),
             label=train["labels"],
             group_id=group_id,
         )
-        valid_pool = Pool(
-            data=np.nan_to_num(validation["features"], nan=0.0),
-            label=validation["labels"],
-            group_id=valid_group_id,
-        )
+        valid_features = np.nan_to_num(validation["features"], nan=0.0)
         model = CatBoostRanker(
             loss_function="YetiRank",
             iterations=300,
@@ -109,8 +101,8 @@ def main() -> None:
             random_seed=42,
             verbose=False,
         )
-        model.fit(train_pool, eval_set=valid_pool)
-        scores = model.predict(valid_pool)
+        model.fit(train_pool)
+        scores = model.predict(valid_features)
         ranker, _ = ranking_metrics(
             np.asarray(scores),
             validation,

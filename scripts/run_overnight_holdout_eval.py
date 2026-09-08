@@ -21,11 +21,12 @@ from recsys_loom.overnight.protocol import (
 from recsys_loom.overnight.ranking import (
     apply_baseline_budget,
     development_specs,
-    evaluate_model,
     load_or_build_snapshot,
+    segment_report,
 )
 from recsys_loom.overnight.serve import (
     fit_from_spec,
+    predict_scores,
     transform_snapshot,
     uses_extra_training,
 )
@@ -102,22 +103,30 @@ def main() -> None:
             spec,
             training=False,
         )
-        result = evaluate_model(model, validation, relevance, article_ids)
-        result.pop("scores", None)
+        scores = predict_scores(model, validation)
+        segments = segment_report(scores, validation, article_ids, relevance)
         batch_results.append(
             {
                 "path": str(specification.existing_candidates_path.name),
-                "ranker": result["ranker"],
-                "candidate": result["candidate"],
+                "ranker": segments["overall"],
+                "candidate": segments["candidate"],
+                "segments": {
+                    "by_history_bucket": segments["by_history_bucket"],
+                    "retrieved_positives": segments["retrieved_positives"],
+                },
             }
         )
     maps = [batch["ranker"]["map_at_12"] for batch in batch_results]
     customers = sum(int(batch["ranker"]["customers"]) for batch in batch_results)
+    recalls = [batch["ranker"]["recall_at_12"] for batch in batch_results]
+    hits = [batch["ranker"]["hit_rate_at_12"] for batch in batch_results]
     report = {
         "evaluation_type": "customer_holdout_final_evaluation",
-        "best_system": load_spec(),
+        "best_system": spec,
         "customers": customers,
         "mean_map_at_12": float(sum(maps) / len(maps)),
+        "mean_recall_at_12": float(sum(recalls) / len(recalls)),
+        "mean_hit_rate_at_12": float(sum(hits) / len(hits)),
         "batch_maps": maps,
         "batches": batch_results,
         "runtime_seconds": time.monotonic() - started,

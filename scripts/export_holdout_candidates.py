@@ -195,11 +195,7 @@ def write_two_tower(path: Path, customer_ids: list[str], connection) -> None:
                 )
 
 
-def main() -> None:
-    ensure_directories()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    batch_index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    holdout = load_holdout_ids()
+def export_batch(batch_index: int, holdout: list[str]) -> dict[str, object]:
     start = batch_index * BATCH_SIZE
     customer_ids = holdout[start : start + BATCH_SIZE]
     if not customer_ids:
@@ -226,6 +222,19 @@ def main() -> None:
     )
     print(json.dumps(report, indent=2))
     connection.close()
+    return report
+
+
+def main() -> None:
+    ensure_directories()
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    holdout = load_holdout_ids()
+    if len(sys.argv) > 1:
+        batches = [int(sys.argv[1])]
+    else:
+        batches = list(range((len(holdout) + BATCH_SIZE - 1) // BATCH_SIZE))
+    for batch_index in batches:
+        export_batch(batch_index, holdout)
 
 
 if __name__ == "__main__":

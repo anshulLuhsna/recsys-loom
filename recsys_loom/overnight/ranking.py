@@ -449,3 +449,96 @@ def evaluate_model(
 
 def apply_baseline_budget(data: dict[str, NDArray]) -> dict[str, NDArray]:
     return apply_budget(data, TT_BUDGET)
+
+
+def _quantile_name(value: float, low: float, high: float) -> str:
+    if value <= low:
+        return "long_tail"
+    if value <= high:
+        return "medium"
+    return "head"
+
+
+def _novelty_name(times_bought: float, type_affinity: float) -> str:
+    if times_bought > 0:
+        return "exact_repeat"
+    if type_affinity > 0:
+        return "same_product_type"
+    return "novel"
+
+
+def _source_name(count: float) -> str:
+    if count <= 1:
+        return "1"
+    if count == 2:
+        return "2"
+    if count == 3:
+        return "3"
+    return "4+"
+
+
+def _summarize_ranks(ranks: list[int]) -> dict[str, float | int]:
+    if not ranks:
+        return {"n": 0, "median_rank": None, "top12_rate": 0.0}
+    ordered = sorted(ranks)
+    mid = ordered[len(ordered) // 2]
+    return {
+        "n": len(ranks),
+        "median_rank": float(mid),
+        "top12_rate": sum(rank <= 12 for rank in ranks) / len(ranks),
+    }
+
+
+def segment_report(
+    scores: NDArray[np.floating],
+    data: dict[str, NDArray],
+    article_ids: list[str],
+    relevance: dict[str, set[str]],
+) -> dict[str, Any]:
+    overall, by_history = ranking_metrics(scores, data, article_ids, relevance)
+    names = [str(value) for value in data["feature_names"]]
+    index = {name: position for position, name in enumerate(names)}
+    popularity = np.nan_to_num(data["features"][:, index["item_purchases_30d"]], nan=0.0)
+    positives = data["labels"] > 0
+    if int(positives.sum()) >= 3:
+        low, high = np.quantile(popularity[positives], [1.0 / 3.0, 2.0 / 3.0])
+    else:
+        low, high = 0.0, 0.0
+    buckets = {
+        "popularity": {},
+        "novelty": {},
+        "source_count": {},
+    }
+    offset = 0
+    for group_size_value in data["groups"]:
+        group_size = int(group_size_value)
+        end = offset + group_size
+        order = np.argsort(-scores[offset:end])
+        ranks = np.empty(group_size, dtype=np.int32)
+        ranks[order] = np.arange(1, group_size + 1)
+        for local in range(group_size):
+            if data["labels"][offset + local] <= 0:
+                continue
+            row = data["features"][offset + local]
+            pop_name = _quantile_name(float(popularity[offset + local]), float(low), float(high))
+            novelty = _novelty_name(
+                float(np.nan_to_num(row[index["times_bought_item"]], nan=0.0)),
+                float(np.nan_to_num(row[index["affinity_product_type_name"]], nan=0.0)),
+            )
+            sources = _source_name(float(row[index["num_sources"]]))
+            for family, key in (
+                ("popularity", pop_name),
+                ("novelty", novelty),
+                ("source_count", sources),
+            ):
+                buckets[family].setdefault(key, []).append(int(ranks[local]))
+        offset = end
+    return {
+        "overall": overall,
+        "by_history_bucket": by_history,
+        "retrieved_positives": {
+            family: {key: _summarize_ranks(ranks) for key, ranks in values.items()}
+            for family, values in buckets.items()
+        },
+        "candidate": candidate_metrics(data, relevance),
+    }

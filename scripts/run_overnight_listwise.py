@@ -13,12 +13,12 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from recsys_loom.metrics import average_precision_at_k
 from recsys_loom.overnight.db import catalog_article_ids, connect
 from recsys_loom.overnight.listwise import (
     fit_reranker,
     predict_shortlist,
     shortlist_groups,
+    slate_metrics,
     tiny_overfit_sanity,
 )
 from recsys_loom.overnight.protocol import (
@@ -37,33 +37,6 @@ from recsys_loom.overnight.ranking import (
 )
 
 SHORTLISTS = [25, 50, 100]
-
-
-def slate_metrics(
-    predictions: dict[int, list[str]],
-    data: dict[str, np.ndarray],
-    relevance: dict[str, set[str]],
-) -> dict[str, float]:
-    aps = []
-    hits = 0
-    customers_with_hit = 0
-    relevant_count = 0
-    for customer_index, customer_id_value in enumerate(data["customer_ids"]):
-        customer_id = str(customer_id_value)
-        predicted = predictions.get(customer_index, [])
-        relevant = relevance.get(customer_id, set())
-        aps.append(average_precision_at_k(relevant, predicted, 12))
-        hit_count = len(set(predicted[:12]).intersection(relevant))
-        hits += hit_count
-        customers_with_hit += int(hit_count > 0)
-        relevant_count += len(relevant)
-    customers = len(data["customer_ids"])
-    return {
-        "map_at_12": float(np.mean(aps)) if customers else 0.0,
-        "recall_at_12": hits / relevant_count if relevant_count else 0.0,
-        "hit_rate_at_12": customers_with_hit / customers if customers else 0.0,
-        "customers": customers,
-    }
 
 
 def main() -> None:
