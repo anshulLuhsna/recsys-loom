@@ -21,6 +21,7 @@ from recsys_loom.overnight.transforms import (
     NEGATIVE_SCHEMES,
     add_crosses,
     downsample_snapshot,
+    row_weights_for_scheme,
     weighted_labels,
 )
 from recsys_loom.ranking.ranker import train_ranker
@@ -74,14 +75,17 @@ def _fit_lightgbm(
     architecture = spec.get("architecture", {})
     ranker = architecture.get("ranker", {})
     kwargs = _ranker_kwargs(ranker)
-    if architecture.get("label_weighting") == "inv_sqrt_popularity":
+    uses_label_weights = architecture.get("label_weighting") == "inv_sqrt_popularity"
+    group_scheme = architecture.get("group_weighting")
+    if uses_label_weights or group_scheme:
         train = combine_training(prepared)
         return train_ranker(
             train["features"],
-            weighted_labels(train),
+            weighted_labels(train) if uses_label_weights else train["labels"],
             train["groups"],
             [str(value) for value in train["feature_names"]],
             verbose=0,
+            weight=row_weights_for_scheme(train, group_scheme),
             **kwargs,
         )
     return fit_ranker(prepared, **kwargs)
@@ -101,6 +105,7 @@ def _fit_catboost(prepared: list[dict[str, Any]], spec: dict[str, Any]) -> Any:
         data=np.nan_to_num(train["features"], nan=0.0),
         label=labels,
         group_id=group_id,
+        weight=row_weights_for_scheme(train, architecture.get("group_weighting")),
     )
     model = CatBoostRanker(
         loss_function="YetiRank",

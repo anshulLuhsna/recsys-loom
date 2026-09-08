@@ -16,6 +16,7 @@ PYTHON = sys.executable
 
 STAGES = [
     ["scripts/run_overnight_longtail_weights.py"],
+    ["scripts/run_overnight_group_weights.py"],
     ["scripts/freeze_best_system.py"],
     ["scripts/export_holdout_candidates.py"],
     ["scripts/run_overnight_holdout_eval.py"],

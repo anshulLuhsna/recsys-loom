@@ -31,6 +31,7 @@ def main() -> None:
     catboost = _load("catboost_ranker.json")
     listwise = _load("listwise_reranker.json")
     weights = _load("longtail_weights.json")
+    groups = _load("group_weights.json")
     spec = default_spec()
     architecture = spec["architecture"]
     decisions = []
@@ -83,6 +84,14 @@ def main() -> None:
         architecture["label_weighting"] = None
         decisions.append("weights:none")
 
+    group_selected = groups.get("selected")
+    if group_selected and group_selected != "unweighted":
+        architecture["group_weighting"] = group_selected
+        decisions.append(f"group_weights:{group_selected}")
+    else:
+        architecture["group_weighting"] = None
+        decisions.append("group_weights:none")
+
     cat_mean = (catboost.get("catboost") or {}).get("mean_map_at_12")
     if (
         catboost.get("selected") == "catboost_yetirank"
@@ -126,6 +135,7 @@ def main() -> None:
         "scaled_selected": scaled.get("selected"),
         "catboost_selected": catboost.get("selected"),
         "listwise_selected": listwise.get("selected"),
+        "group_selected": groups.get("selected"),
     }
     path = write_spec(spec)
     print(json.dumps(spec, indent=2))

@@ -45,6 +45,7 @@ def main() -> None:
     catboost = _load("catboost_ranker.json")
     listwise = _load("listwise_reranker.json")
     weights = _load("longtail_weights.json")
+    groups = _load("group_weights.json")
     baseline_map = baseline.get("development_mean_map_at_12")
     holdout_map = holdout.get("mean_map_at_12")
     selected = (spec.get("architecture") or {}).get("ranker") or {}
@@ -66,6 +67,9 @@ def main() -> None:
             if listwise.get("selected") not in {None, "lambda_only"}
             else None,
             "long-tail weights" if weights.get("selected") == "inv_sqrt_popularity" else None,
+            f"group weights {groups.get('selected')}"
+            if groups.get("selected") not in {None, "unweighted"}
+            else None,
         )
         if item
     ]
@@ -88,6 +92,10 @@ def main() -> None:
             None
             if listwise.get("selected") not in {None, "lambda_only"}
             else "listwise reranker",
+            "rank_xendcg / L2 / truncation / wide trees",
+            None
+            if groups.get("selected") not in {None, "unweighted"}
+            else "group-size / active-user weighting (kept unweighted)",
         )
         if item
     ]

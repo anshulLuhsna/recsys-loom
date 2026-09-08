@@ -31,6 +31,7 @@ def default_spec() -> dict[str, object]:
                 "2020-09-07",
             ],
             "serving_cutoff": "2020-09-15",
+            "group_weighting": None,
         },
         "selection": {
             "development_mean_map_at_12": 0.027068315668018046,

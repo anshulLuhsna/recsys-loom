@@ -124,6 +124,16 @@ def downsample_snapshot(
     }
 
 
+HISTORY_BUCKET_MIDPOINTS = {
+    "0": 0.0,
+    "1-2": 1.5,
+    "3-5": 4.0,
+    "6-10": 8.0,
+    "11-20": 15.5,
+    "20+": 25.0,
+}
+
+
 def weighted_labels(data: dict[str, np.ndarray]) -> np.ndarray:
     names = [str(value) for value in data["feature_names"]]
     popularity = np.nan_to_num(
@@ -135,3 +145,42 @@ def weighted_labels(data: dict[str, np.ndarray]) -> np.ndarray:
     weights[positive] = 1.0 / np.sqrt(np.maximum(popularity[positive], 1.0))
     weights = np.clip(weights, 0.25, 4.0)
     return data["labels"].astype(np.float32) * weights
+
+
+def _expand_group_weights(
+    groups: np.ndarray,
+    group_weights: np.ndarray,
+) -> np.ndarray:
+    return np.repeat(np.asarray(group_weights, dtype=np.float32), groups)
+
+
+def group_size_weights(groups: np.ndarray) -> np.ndarray:
+    sizes = np.maximum(np.asarray(groups, dtype=np.float32), 1.0)
+    return _expand_group_weights(groups, 1.0 / np.sqrt(sizes))
+
+
+def history_bucket_weights(
+    groups: np.ndarray,
+    history_buckets: np.ndarray,
+) -> np.ndarray:
+    midpoints = np.asarray(
+        [
+            HISTORY_BUCKET_MIDPOINTS.get(str(bucket), 8.0)
+            for bucket in history_buckets
+        ],
+        dtype=np.float32,
+    )
+    return _expand_group_weights(groups, 1.0 / np.sqrt(1.0 + midpoints))
+
+
+def row_weights_for_scheme(
+    data: dict[str, np.ndarray],
+    scheme: str | None,
+) -> np.ndarray | None:
+    if not scheme or scheme == "unweighted":
+        return None
+    if scheme == "inv_sqrt_group_size":
+        return group_size_weights(data["groups"])
+    if scheme == "inv_sqrt_history":
+        return history_bucket_weights(data["groups"], data["history_buckets"])
+    raise ValueError(f"unknown group-weighting scheme: {scheme}")

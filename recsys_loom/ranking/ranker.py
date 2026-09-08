@@ -75,10 +75,12 @@ def train_ranker(
     min_child_samples: int = 50,
     verbose: int = 25,
     params_update: dict | None = None,
+    weight: NDArray[np.float32] | None = None,
 ) -> lgb.Booster:
     """Train a LambdaRank model."""
     train_data = lgb.Dataset(
         X_train, label=y_train, group=groups_train,
+        weight=weight,
         feature_name=feature_names,
         free_raw_data=False,
     )
