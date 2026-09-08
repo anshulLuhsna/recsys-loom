@@ -53,7 +53,8 @@ def main() -> None:
     lexical = BM25Index()
     lexical.build(articles)
     structured = StructuredIndex(articles)
-    semantic = SemanticIndex.load(load_encoder=True)
+    load_semantic = "--lexical-only" not in sys.argv
+    semantic = SemanticIndex.load(load_encoder=True) if load_semantic else None
     engine = SearchEngine(articles, lexical, semantic, structured)
     queries = generate_structured_queries(articles, limit=60)
     holdout = queries[::5]
@@ -68,7 +69,7 @@ def main() -> None:
             intent,
             articles,
             lexical.search(query, 80),
-            semantic.search(query, 80),
+            semantic.search(query, 80) if semantic is not None else [],
             structured.retrieve(intent, 80),
             {},
             limit=80,
@@ -114,7 +115,7 @@ def main() -> None:
             intent,
             articles,
             lexical.search(query, 80),
-            semantic.search(query, 80),
+            semantic.search(query, 80) if semantic is not None else [],
             structured.retrieve(intent, 80),
             {},
             limit=80,

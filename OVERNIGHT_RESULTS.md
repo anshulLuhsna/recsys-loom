@@ -148,6 +148,21 @@ Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`
 - A weakly supervised search LambdaRank exists (`scripts/run_search_ranker.py`)
   and will be kept only if it beats this hybrid on held-out synthetic queries.
 
+## Rejected ideas (already decided, not rerun)
+
+These were tested before this overnight run. Stage 1 did not produce a new
+hypothesis that would reopen them.
+
+| Idea | Evidence | Decision |
+|---|---|---|
+| DCN V2 / MLP ranker | LambdaRank ~0.0275 vs MLP 0.0227 vs DCN 0.0148 on the earlier protocol | Reject. Implementation checks passed; generalization failed. |
+| Image-only DINOv2 retrieval | Weak marginal recall; final MAP fell | Reject generic averaged image retrieval. |
+| Unrestricted text candidate expansion | TT Recall@500 rose 0.0733→0.1479, but MAP did not; new positives sat at median rank ~501 | Freeze text expansion. |
+| History-based two-tower routing | Selected against on earlier folds | Reject. |
+| Treating Sep 16–22 as an unseen final week | Dataset ends 2020-09-22; those metrics were already inspected | Customer-holdout protocol instead. |
+
 ## Best system
 
-Not frozen yet. Current champion remains BASELINE_RANKER.
+Not frozen yet. Current champion remains BASELINE_RANKER. `num_leaves=31` is a
+provisional challenger at 0.02730 and is not promoted until the remaining
+LightGBM trials and later stages finish.
