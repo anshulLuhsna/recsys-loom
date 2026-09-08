@@ -182,6 +182,50 @@ hypothesis that would reopen them.
 | Faster 200-tree / lr=0.10 schedule | 0.02382 | Reject. |
 | 127 leaves or looser/tighter min_child | 0.02494 / 0.02600 / 0.02639 | Reject. |
 
+## Remaining bottleneck
+
+The candidate pool already contains most recoverable positives (oracle MAP@12
+≈ 0.29; candidate recall ≈ 0.28). LambdaRank promotes repeats and
+multi-source popular items and buries complementary-retriever positives
+(ALS-only / PMI-only / two-tower-only top-12 rates under 3%). Buried
+long-tail positives and high-ranked implicit negatives look similar on the
+current features. That is a **features + supervision** bottleneck, not a
+missing neural ranker. Irreducible next-week purchase uncertainty is also
+large: even a perfect ranker of retrieved items cannot reach oracle MAP.
+
+## Production architecture recommendation
+
+Until later stages overturn it, serve:
+
+```text
+Popularity + Repeat + PMI + ALS + metadata content + metadata two-tower K=50
+        ↓
+LightGBM LambdaRank (500 trees, lr=0.03, 63 leaves)
+        ↓
+Top 12
+```
+
+Keep search as a separate query-first hybrid. Do not reuse the purchase
+LambdaRank as a search ranker. Do not add GenRec, DCN, or image retrieval
+without a new measured failure.
+
+## What would change with real H&M production data
+
+This dataset has purchases only. Real production data would change both
+training and evaluation:
+
+- Impressions and clicks would let ranking learn what was seen and skipped,
+  not only what was bought.
+- Carts, favorites, and returns would separate intent from fulfillment.
+- Session context and real-time state would make sequential models worth
+  retrying.
+- Inventory and availability would make an unavailable high-score item an
+  operational error instead of a silent label.
+- Real query/click logs would replace the synthetic search benchmark.
+
+Until those exist, MAP@12 on later purchases is a recovery metric, not a
+causal lift or satisfaction claim.
+
 ## Best system
 
 Not frozen yet. Current development champion is six-source LightGBM

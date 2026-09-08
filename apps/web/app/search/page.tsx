@@ -68,7 +68,7 @@ export default function SearchPage() {
     [items],
   );
 
-  async function runSearch(nextQuery: string) {
+  async function runSearch(nextQuery: string, nextCustomerId = customerId) {
     if (!nextQuery.trim()) {
       return;
     }
@@ -79,7 +79,10 @@ export default function SearchPage() {
     setColorFilter("");
     setSectionFilter("");
     try {
-      const payload = await searchCatalog(nextQuery.trim(), customerId || undefined);
+      const payload = await searchCatalog(
+        nextQuery.trim(),
+        nextCustomerId || undefined,
+      );
       setItems(payload.results ?? []);
       const intent = payload.parsed_intent ?? {};
       setChips(
@@ -119,7 +122,13 @@ export default function SearchPage() {
           <select
             id="search-customer"
             value={customerId}
-            onChange={(event) => setCustomerId(event.target.value)}
+            onChange={(event) => {
+              const nextCustomerId = event.target.value;
+              setCustomerId(nextCustomerId);
+              if (searched) {
+                void runSearch(query, nextCustomerId);
+              }
+            }}
           >
             <option value="">Anonymous search</option>
             {customers.map((customer) => (
@@ -128,6 +137,11 @@ export default function SearchPage() {
               </option>
             ))}
           </select>
+          <p>
+            {customerId
+              ? "Personalized search can bump in-query items this customer already likes. It cannot replace the query."
+              : "Anonymous search is query relevance only."}
+          </p>
         </div>
       </section>
       <div className="examples">
