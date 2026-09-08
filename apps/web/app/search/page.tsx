@@ -214,9 +214,7 @@ export default function SearchPage() {
       ) : null}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <h2>
-          {searched
-            ? `${filtered.length} results`
-            : "Results"}
+          {loading ? "Searching…" : searched ? `${filtered.length} results` : "Results"}
         </h2>
         <button className="toggle" type="button" onClick={() => setShowSignals((value) => !value)}>
           {showSignals ? "Hide signals" : "Show signals"}
