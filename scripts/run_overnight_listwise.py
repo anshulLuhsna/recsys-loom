@@ -35,6 +35,7 @@ from recsys_loom.overnight.ranking import (
     load_or_build_snapshot,
     ranking_metrics,
 )
+from recsys_loom.overnight.selection import selected_lightgbm_kwargs
 
 SHORTLISTS = [25, 50, 100]
 
@@ -75,7 +76,7 @@ def main() -> None:
     for validation_index in SELECTION_FOLDS:
         cutoff = SNAPSHOTS[validation_index]["cutoff"]
         print(f"Fold {cutoff}", flush=True)
-        model = fit_ranker(snapshots[:validation_index])
+        model = fit_ranker(snapshots[:validation_index], **selected_lightgbm_kwargs())
         validation = snapshots[validation_index]
         base_scores = np.asarray(
             model.predict(validation["features"]), dtype=np.float32

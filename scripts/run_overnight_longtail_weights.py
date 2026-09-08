@@ -28,6 +28,7 @@ from recsys_loom.overnight.ranking import (
     evaluate_model,
     load_or_build_snapshot,
 )
+from recsys_loom.overnight.selection import selected_lightgbm_kwargs
 from recsys_loom.overnight.transforms import weighted_labels
 from recsys_loom.ranking.ranker import train_ranker
 
@@ -41,6 +42,7 @@ def run_arm(train_snapshots, validation, relevance, article_ids, weighted: bool)
         train["groups"],
         [str(value) for value in train["feature_names"]],
         verbose=0,
+        **selected_lightgbm_kwargs(),
     )
     result = evaluate_model(model, validation, relevance, article_ids)
     result.pop("scores", None)

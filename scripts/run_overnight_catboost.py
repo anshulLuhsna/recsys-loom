@@ -36,6 +36,7 @@ from recsys_loom.overnight.ranking import (
     load_or_build_snapshot,
     ranking_metrics,
 )
+from recsys_loom.overnight.selection import selected_lightgbm_kwargs
 
 
 def main() -> None:
@@ -71,7 +72,8 @@ def main() -> None:
     for validation_index in SELECTION_FOLDS:
         cutoff = SNAPSHOTS[validation_index]["cutoff"]
         print(f"Fold {cutoff}", flush=True)
-        lgbm = fit_ranker(snapshots[:validation_index])
+        ranker_kwargs = selected_lightgbm_kwargs()
+        lgbm = fit_ranker(snapshots[:validation_index], **ranker_kwargs)
         lgbm_result = evaluate_model(
             lgbm,
             snapshots[validation_index],
@@ -95,8 +97,8 @@ def main() -> None:
         valid_features = np.nan_to_num(validation["features"], nan=0.0)
         model = CatBoostRanker(
             loss_function="YetiRank",
-            iterations=300,
-            learning_rate=0.05,
+            iterations=int(ranker_kwargs["n_estimators"]),
+            learning_rate=float(ranker_kwargs["learning_rate"]),
             depth=6,
             random_seed=42,
             verbose=False,

@@ -203,9 +203,15 @@ def main() -> None:
             existing_reports.append({"cutoff": snapshot["cutoff"], "cached": True})
             continue
         print(f"Exporting existing sources {snapshot['cutoff']}...", flush=True)
-        existing_reports.append(
-            export_existing_snapshot(existing_con, snapshot, sample_size)
-        )
+        try:
+            existing_reports.append(
+                export_existing_snapshot(existing_con, snapshot, sample_size)
+            )
+        except Exception as exc:
+            print(f"Existing export failed for {snapshot['cutoff']}: {exc}", flush=True)
+            existing_reports.append(
+                {"cutoff": snapshot["cutoff"], "error": str(exc)}
+            )
     existing_con.close()
 
     tt_con = duckdb.connect()
@@ -223,7 +229,11 @@ def main() -> None:
             tt_reports.append({"cutoff": snapshot["cutoff"], "cached": True})
             continue
         print(f"Exporting two-tower {snapshot['cutoff']}...", flush=True)
-        tt_reports.append(export_two_tower(tt_con, catalog, snapshot, sample_size))
+        try:
+            tt_reports.append(export_two_tower(tt_con, catalog, snapshot, sample_size))
+        except Exception as exc:
+            print(f"Two-tower export failed for {snapshot['cutoff']}: {exc}", flush=True)
+            tt_reports.append({"cutoff": snapshot["cutoff"], "error": str(exc)})
     tt_con.close()
     report = {
         "existing": existing_reports,

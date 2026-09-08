@@ -26,6 +26,7 @@ from recsys_loom.overnight.ranking import (
     fit_ranker,
     load_or_build_snapshot,
 )
+from recsys_loom.overnight.selection import selected_lightgbm_kwargs
 
 
 def available(include_extra: bool) -> bool:
@@ -55,7 +56,7 @@ def run_protocol(include_extra: bool, connection, article_ids, article_to_index)
         relevance.append(snapshot_relevance)
     folds = []
     for validation_index in selection_fold_indices(include_extra):
-        model = fit_ranker(snapshots[:validation_index])
+        model = fit_ranker(snapshots[:validation_index], **selected_lightgbm_kwargs())
         result = evaluate_model(
             model,
             snapshots[validation_index],

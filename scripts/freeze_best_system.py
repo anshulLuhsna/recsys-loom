@@ -11,7 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from recsys_loom.overnight.best_system import default_spec, write_spec
-from recsys_loom.overnight.protocol import OVERNIGHT_DIR
+from recsys_loom.overnight.protocol import MAP_TOLERANCE, OVERNIGHT_DIR
+from recsys_loom.overnight.selection import selected_lightgbm_kwargs, selected_trial
 
 
 def _load(name: str) -> dict:
@@ -35,32 +36,19 @@ def main() -> None:
     decisions = []
 
     if tune.get("selected") and tune["selected"] != "baseline":
-        architecture["ranker"] = {
-            **architecture["ranker"],
-            **{
-                key: value
-                for key, value in tune.get("trials", [{}])[0].get("params", {}).items()
-                if key != "name"
-            },
-            "selected_trial": tune["selected"],
-        }
-        chosen = next(
-            (row for row in tune.get("trials", []) if row.get("name") == tune["selected"]),
-            {},
-        )
+        architecture["ranker"].update(selected_lightgbm_kwargs())
+        architecture["ranker"]["selected_trial"] = tune["selected"]
+        chosen = selected_trial(tune)
         if chosen:
-            architecture["ranker"].update(
-                {
-                    "n_estimators": chosen.get("params", {}).get("n_estimators"),
-                    "learning_rate": chosen.get("params", {}).get("learning_rate"),
-                    "num_leaves": chosen.get("params", {}).get("num_leaves"),
-                    "min_child_samples": chosen.get("params", {}).get("min_child_samples"),
-                    "params_update": chosen.get("params", {}).get("params_update"),
-                }
+            architecture["ranker"]["params_update"] = chosen.get("params", {}).get(
+                "params_update"
             )
         decisions.append(f"lightgbm:{tune['selected']}")
     else:
         decisions.append("lightgbm:baseline")
+    lightgbm_mean = tune.get("selected_mean_map_at_12") or baseline.get(
+        "development_mean_map_at_12"
+    )
 
     if scaled.get("selected") == "scaled":
         architecture["training_snapshots"] = [
@@ -95,18 +83,36 @@ def main() -> None:
         architecture["label_weighting"] = None
         decisions.append("weights:none")
 
-    if catboost.get("selected") == "catboost_yetirank":
+    cat_mean = (catboost.get("catboost") or {}).get("mean_map_at_12")
+    if (
+        catboost.get("selected") == "catboost_yetirank"
+        and cat_mean is not None
+        and lightgbm_mean is not None
+        and cat_mean > float(lightgbm_mean) + MAP_TOLERANCE
+    ):
         architecture["ranker"]["family"] = "catboost_yetirank"
         decisions.append("ranker:catboost")
     else:
         decisions.append("ranker:lightgbm")
 
-    if listwise.get("selected") and listwise["selected"] != "lambda_only":
+    listwise_mean = None
+    selected_listwise = listwise.get("selected")
+    if selected_listwise and selected_listwise != "lambda_only":
+        listwise_mean = (listwise.get("arms") or {}).get(selected_listwise, {}).get(
+            "mean_map_at_12"
+        )
+    if (
+        selected_listwise
+        and selected_listwise != "lambda_only"
+        and listwise_mean is not None
+        and lightgbm_mean is not None
+        and listwise_mean > float(lightgbm_mean) + MAP_TOLERANCE
+    ):
         architecture["reranker"] = {
             "family": "set_transformer_listnet",
-            "selected": listwise["selected"],
+            "selected": selected_listwise,
         }
-        decisions.append(f"reranker:{listwise['selected']}")
+        decisions.append(f"reranker:{selected_listwise}")
     else:
         architecture["reranker"] = None
         decisions.append("reranker:none")

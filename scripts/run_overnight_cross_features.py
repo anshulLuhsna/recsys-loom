@@ -26,15 +26,16 @@ from recsys_loom.overnight.ranking import (
     fit_ranker,
     load_or_build_snapshot,
 )
+from recsys_loom.overnight.selection import selected_lightgbm_kwargs
 from recsys_loom.overnight.transforms import add_crosses
 
 
-def mean_map(snapshots, relevance, article_ids, transform) -> dict[str, object]:
+def mean_map(snapshots, relevance, article_ids, transform, ranker_kwargs) -> dict[str, object]:
     folds = []
     for validation_index in SELECTION_FOLDS:
         train = [transform(snapshot) for snapshot in snapshots[:validation_index]]
         validation = transform(snapshots[validation_index])
-        model = fit_ranker(train)
+        model = fit_ranker(train, **ranker_kwargs)
         result = evaluate_model(
             model,
             validation,
@@ -73,8 +74,10 @@ def main() -> None:
         )
         snapshots.append(apply_baseline_budget(data))
         relevance.append(snapshot_relevance)
-    baseline = mean_map(snapshots, relevance, article_ids, lambda data: data)
-    crossed = mean_map(snapshots, relevance, article_ids, add_crosses)
+    ranker_kwargs = selected_lightgbm_kwargs()
+    print(f"Using LightGBM kwargs {ranker_kwargs}", flush=True)
+    baseline = mean_map(snapshots, relevance, article_ids, lambda data: data, ranker_kwargs)
+    crossed = mean_map(snapshots, relevance, article_ids, add_crosses, ranker_kwargs)
     selected = "baseline_features"
     if crossed["mean_map_at_12"] > baseline["mean_map_at_12"] + 0.0002:
         selected = "targeted_crosses"

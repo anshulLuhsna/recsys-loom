@@ -28,6 +28,7 @@ from recsys_loom.overnight.ranking import (
     fit_ranker,
     load_or_build_snapshot,
 )
+from recsys_loom.overnight.selection import selected_lightgbm_kwargs
 from recsys_loom.overnight.transforms import NEGATIVE_SCHEMES, downsample_snapshot
 
 
@@ -36,8 +37,9 @@ def run_arm(
     validation: dict[str, np.ndarray],
     relevance: dict[str, set[str]],
     article_ids: list[str],
+    ranker_kwargs: dict,
 ) -> dict[str, object]:
-    model = fit_ranker(train_snapshots)
+    model = fit_ranker(train_snapshots, **ranker_kwargs)
     result = evaluate_model(model, validation, relevance, article_ids)
     result.pop("scores", None)
     result["training_positives"] = int(
@@ -67,6 +69,8 @@ def main() -> None:
         snapshots.append(apply_baseline_budget(data))
         relevance.append(snapshot_relevance)
 
+    ranker_kwargs = selected_lightgbm_kwargs()
+    print(f"Using LightGBM kwargs {ranker_kwargs}", flush=True)
     schemes = NEGATIVE_SCHEMES
     report_folds = {name: [] for name in schemes}
     for validation_index in SELECTION_FOLDS:
@@ -89,6 +93,7 @@ def main() -> None:
                 validation,
                 relevance[validation_index],
                 article_ids,
+                ranker_kwargs,
             )
             report_folds[name].append(
                 {
