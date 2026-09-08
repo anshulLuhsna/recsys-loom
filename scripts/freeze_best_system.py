@@ -93,6 +93,7 @@ def main() -> None:
         decisions.append("group_weights:none")
 
     cat_mean = (catboost.get("catboost") or {}).get("mean_map_at_12")
+    champion_mean = lightgbm_mean
     if (
         catboost.get("selected") == "catboost_yetirank"
         and cat_mean is not None
@@ -100,6 +101,7 @@ def main() -> None:
         and cat_mean > float(lightgbm_mean) + MAP_TOLERANCE
     ):
         architecture["ranker"]["family"] = "catboost_yetirank"
+        champion_mean = cat_mean
         decisions.append("ranker:catboost")
     else:
         decisions.append("ranker:lightgbm")
@@ -114,8 +116,8 @@ def main() -> None:
         selected_listwise
         and selected_listwise != "lambda_only"
         and listwise_mean is not None
-        and lightgbm_mean is not None
-        and listwise_mean > float(lightgbm_mean) + MAP_TOLERANCE
+        and champion_mean is not None
+        and listwise_mean > float(champion_mean) + MAP_TOLERANCE
     ):
         architecture["reranker"] = {
             "family": "set_transformer_listnet",

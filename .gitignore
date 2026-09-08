@@ -15,5 +15,6 @@ node_modules/
 dist/
 *.egg-info/
 *.pdf
+catboost_info/
 apps/web/.next/
 apps/web/out/

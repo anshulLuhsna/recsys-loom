@@ -7,15 +7,15 @@ inspected until `BEST_SYSTEM` is frozen.
 
 ## Executive summary
 
-Current development champion is the six-source LightGBM LambdaRank with the
-slower 500-tree schedule (`lr=0.03`, 63 leaves). Mean MAP@12 is **0.02799**
-versus the frozen 300-tree baseline **0.02707** (+0.00092, +3.4% relative).
-That is the only material overnight lift so far. Truncation, wider trees,
-XENDCG, stronger L2, hard-negative downsampling, and explicit crosses all
-lost. Two extra ranking weeks raised mean MAP@12 only from 0.02799 to
-0.02809 (+0.00010), inside the 0.0002 keep-simpler band, so the four-week
-schedule stays. CatBoost, listwise, long-tail, and group-weight experiments
-are still queued. Customer-holdout MAP is not inspected yet.
+Current development champion is **CatBoost YetiRank** on the same six-source
+features and 500-iteration / `lr=0.03` schedule. Mean MAP@12 is **0.02987**
+versus LightGBM `lr03_n500` **0.02799** (+0.00188) and versus the 300-tree
+LightGBM baseline **0.02707** (+0.00280, +10.3% relative). Both selection
+folds moved up. The LightGBM slower schedule was a real but smaller lift.
+Truncation, XENDCG, hard negatives, crosses, and extra weeks lost or tied.
+Listwise aborted with signal 11 after the sanity check (OOM on five loaded
+snapshots) and is rejected. Long-tail and group-weight experiments are in
+finalize. Customer-holdout MAP is not inspected yet.
 
 ## Evaluation integrity
 
@@ -93,8 +93,8 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | Hard negatives | **reject**; all-candidates 0.02799 vs best downsample 0.02204 |
 | Targeted crosses | **reject**; 0.02606 vs baseline features 0.02799 |
 | Scaled supervision | **reject**; 0.02809 vs current 0.02799 (+0.00010 < 0.0002) |
-| CatBoost YetiRank | queued |
-| Listwise reranker | queued |
+| CatBoost YetiRank | **keep**; 0.02987 vs LightGBM 0.02799 |
+| Listwise reranker | **reject**; signal 11 / OOM after sanity check |
 | Long-tail weights | finalize |
 | Group-size / active-user weights | finalize |
 | GenRec-style | not justified by failure analysis |
@@ -202,6 +202,7 @@ hypothesis that would reopen them.
 | Hard-negative downsampling | 0.01815–0.02204 vs 0.02799 all-candidates | Reject; keep full groups. |
 | Explicit ranking crosses | 0.02606 vs 0.02799 baseline features | Reject; trees already interact. |
 | Extra-week ranking supervision | 0.02809 vs 0.02799 | Reject; lift inside 0.0002. |
+| Set-attention ListNet | crashed signal 11 on fold 1 after tiny-overfit passed | Reject; do not serve an unmeasured reranker. |
 
 ## Feature / interaction findings
 
@@ -237,10 +238,13 @@ Until later stages overturn it, serve:
 ```text
 Popularity + Repeat + PMI + ALS + metadata content + metadata two-tower K=50
         ↓
-LightGBM LambdaRank (500 trees, lr=0.03, 63 leaves)
+CatBoost YetiRank (500 iterations, lr=0.03, depth 6)
         ↓
 Top 12
 ```
+
+LightGBM `lr03_n500` remains the strongest gradient-boosted baseline and the
+control for later stages.
 
 Keep search as a separate query-first hybrid. Do not reuse the purchase
 LambdaRank as a search ranker. Do not add GenRec, DCN, or image retrieval
@@ -265,7 +269,6 @@ causal lift or satisfaction claim.
 
 ## Best system
 
-Not frozen yet. Current development champion is six-source LightGBM
-LambdaRank with `n_estimators=500`, `learning_rate=0.03`, 63 leaves. That
-schedule is carried into later stages. Holdout MAP stays unread until
+Not frozen yet. Current development champion is six-source CatBoost
+YetiRank (500 iterations, `lr=0.03`). Holdout MAP stays unread until
 `BEST_SYSTEM.json` is written with `status: frozen_for_holdout`.
