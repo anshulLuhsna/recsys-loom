@@ -12,9 +12,10 @@ slower 500-tree schedule (`lr=0.03`, 63 leaves). Mean MAP@12 is **0.02799**
 versus the frozen 300-tree baseline **0.02707** (+0.00092, +3.4% relative).
 That is the only material overnight lift so far. Truncation, wider trees,
 XENDCG, stronger L2, hard-negative downsampling, and explicit crosses all
-lost. Scaled-supervision, CatBoost, listwise, long-tail, and group-weight
-experiments are still queued. Extra-week ALS+TT export is the current long
-pole. Customer-holdout MAP is not inspected yet.
+lost. Two extra ranking weeks raised mean MAP@12 only from 0.02799 to
+0.02809 (+0.00010), inside the 0.0002 keep-simpler band, so the four-week
+schedule stays. CatBoost, listwise, long-tail, and group-weight experiments
+are still queued. Customer-holdout MAP is not inspected yet.
 
 ## Evaluation integrity
 
@@ -91,7 +92,7 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | LightGBM tune | **selected `lr03_n500`, mean MAP@12 0.02799** |
 | Hard negatives | **reject**; all-candidates 0.02799 vs best downsample 0.02204 |
 | Targeted crosses | **reject**; 0.02606 vs baseline features 0.02799 |
-| Scaled supervision | queued (needs Aug 3 / Aug 10 ALS+TT caches) |
+| Scaled supervision | **reject**; 0.02809 vs current 0.02799 (+0.00010 < 0.0002) |
 | CatBoost YetiRank | queued |
 | Listwise reranker | queued |
 | Long-tail weights | finalize |
@@ -200,6 +201,7 @@ hypothesis that would reopen them.
 | 127 leaves or looser/tighter min_child | 0.02494 / 0.02600 / 0.02639 | Reject. |
 | Hard-negative downsampling | 0.01815–0.02204 vs 0.02799 all-candidates | Reject; keep full groups. |
 | Explicit ranking crosses | 0.02606 vs 0.02799 baseline features | Reject; trees already interact. |
+| Extra-week ranking supervision | 0.02809 vs 0.02799 | Reject; lift inside 0.0002. |
 
 ## Feature / interaction findings
 
@@ -212,9 +214,10 @@ using those relationships. Do not keep the derived columns.
 
 Hard-negative downsampling reduced training rows from ~5.4M to under 1M and
 hurt MAP by 0.006–0.010. Extra earlier weeks (2020-08-03 and 2020-08-10)
-are being exported now; the scaled-supervision decision waits on those
-caches. If export fails, freeze proceeds with the current four training
-weeks.
+caches were written. Training on six weeks instead of four raised mean
+MAP@12 from 0.02799 to 0.02809 and roughly doubled positives (3,675→7,568
+on the Aug 31 fold). That is inside the 0.0002 band. Keep the four-week
+schedule.
 
 ## Remaining bottleneck
 
