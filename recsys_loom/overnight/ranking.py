@@ -215,8 +215,13 @@ def load_history_buckets(
     return [history_bucket(counts.get(customer_id, 0)) for customer_id in customer_ids]
 
 
-def feature_cache_path(cutoff: str, customer_count: int) -> Path:
-    return CACHE_DIR / f"features_{cutoff}_{customer_count}_six.npz"
+def feature_cache_path(
+    cutoff: str,
+    customer_count: int,
+    tag: str = "",
+) -> Path:
+    suffix = f"_{tag}" if tag else ""
+    return CACHE_DIR / f"features_{cutoff}_{customer_count}_six{suffix}.npz"
 
 
 def load_or_build_snapshot(
@@ -224,12 +229,14 @@ def load_or_build_snapshot(
     specification: SnapshotSpec,
     article_to_index: dict[str, int],
     source_names: list[str] | None = None,
+    cache_tag: str = "",
 ) -> tuple[dict[str, NDArray], dict[str, set[str]]]:
     ensure_directories()
     source_names = list(source_names or BASELINE_SOURCES)
     cache_path = feature_cache_path(
         specification.cutoff,
         specification.customer_count,
+        cache_tag,
     )
     relevance = None
     if cache_path.exists():

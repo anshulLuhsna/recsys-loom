@@ -4,15 +4,14 @@
 from __future__ import annotations
 
 import json
-import math
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from recsys_loom.overnight.protocol import OVERNIGHT_DIR, ensure_directories
+from recsys_loom.search.benchmark import generate_structured_queries, ndcg
 from recsys_loom.search.catalog import load_articles, section_family
 from recsys_loom.search.intent import parse_query
 from recsys_loom.search.lexical import BM25Index
@@ -34,17 +33,6 @@ CURATED_QUERIES = [
 ]
 
 
-def ndcg(relevances: list[float], k: int) -> float:
-    predicted = relevances[:k]
-    ideal = sorted(relevances, reverse=True)[:k]
-    def dcg(values: list[float]) -> float:
-        return sum(
-            rel / math.log2(index + 2) for index, rel in enumerate(values)
-        )
-    denom = dcg(ideal)
-    return dcg(predicted) / denom if denom else 0.0
-
-
 def structured_relevance(article, intent) -> float:
     score = 0.0
     if intent.product_type and article.product_type_name == intent.product_type:
@@ -54,22 +42,6 @@ def structured_relevance(article, intent) -> float:
     if intent.section and section_family(article.section_name) == intent.section:
         score += 1.0
     return score
-
-
-def generate_structured_queries(articles, limit: int = 80) -> list[str]:
-    counts: dict[tuple[str, str], int] = defaultdict(int)
-    for article in articles.values():
-        if article.colour_group_name and article.product_type_name:
-            counts[(article.colour_group_name, article.product_type_name)] += 1
-    popular = [
-        pair
-        for pair, count in sorted(counts.items(), key=lambda item: -item[1])
-        if count >= 40
-    ]
-    queries = []
-    for color, product_type in popular[:limit]:
-        queries.append(f"{color.lower()} {product_type.lower()}")
-    return queries
 
 
 def evaluate_queries(engine: SearchEngine, queries: list[str], articles) -> dict[str, float]:

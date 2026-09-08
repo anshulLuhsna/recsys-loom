@@ -69,6 +69,10 @@ The raw dataset is kept locally and must not be committed to Git. Its competitio
 
 H&M provides purchases, not impressions, clicks, natural-language queries, explicit dislikes, inventory, or browsing sessions. Experiments and claims must respect those limits.
 
+Personalized home recommendations are trained/evaluated using historical H&M purchase data.
+
+Search is a hybrid retrieval/ranking demonstration built from product metadata and semantic representations. Because the H&M dataset contains no real search-query/click logs, search relevance is evaluated using synthetic/structured benchmarks rather than production search behavior.
+
 ## First prediction task
 
 Given everything known about a customer before a cutoff, rank 12 articles that the customer is likely to purchase during the next seven days.
@@ -96,7 +100,7 @@ Each stage should answer one question before the next one begins:
 8. **Richer item representations:** Do image or text semantics improve retrieval?
    **Image-only retrieval and text-augmented two-tower tested; neither retained.**
    Joint text-image retrieval remains deferred.
-9. **Learned ranking:** Can the available signals be combined better than fixed rules? **In progress.**
+9. **Learned ranking:** Can the available signals be combined better than fixed rules? **Overnight program in progress.** See [`OVERNIGHT_RESULTS.md`](OVERNIGHT_RESULTS.md).
 10. **LLM layer:** Does language understanding add measurable value beyond embeddings and conventional rankers?
 11. **Constrained reranking:** Can relevance survive diversity, availability, freshness, and latency requirements?
 
@@ -589,4 +593,50 @@ The stability check across eight consecutive chronological weeks is recorded in 
 
 ```bash
 python scripts/run_popularity_backtest.py
+```
+
+## Running the recommendation and search app
+
+The overnight evaluation protocol, ranking failure analysis, and current
+`BEST_SYSTEM` live in [`OVERNIGHT_RESULTS.md`](OVERNIGHT_RESULTS.md) and
+[`docs/evaluation_ledger.md`](docs/evaluation_ledger.md). Copy `env.example`
+to `.env` if you need to change ports.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python scripts/export_demo_recommendations.py
+uvicorn services.recommender.app:app --reload --port 8000
+```
+
+In another shell:
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:3000` for personalized For You recommendations and
+`http://127.0.0.1:3000/search` for hybrid catalog search.
+
+Docker:
+
+```bash
+docker compose up --build
+```
+
+The API loads models and search indices at startup. It does not retrain ALS or
+LambdaRank per request. Raw H&M CSVs and the full image archive stay local and
+are not shipped as Git artifacts. The public demo should use a precomputed
+demo-customer subset plus catalog thumbnails, not tens of gigabytes of raw
+files.
+
+Reproduce overnight ranking experiments from the development protocol:
+
+```bash
+python scripts/audit_evaluation_integrity.py
+python scripts/run_overnight_baseline.py
+python scripts/analyze_ranking_failures.py
 ```
