@@ -1,1 +1,11 @@
 duckdb==1.5.5
+implicit==0.7.3
+scipy==1.18.1
+numpy==2.5.2
+faiss-cpu==1.15.0
+lightgbm
+torch
+torchvision
+transformers
+sentence-transformers
+Pillow
