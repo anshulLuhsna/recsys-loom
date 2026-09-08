@@ -29,19 +29,19 @@ from recsys_loom.overnight.ranking import (
     load_or_build_snapshot,
 )
 from recsys_loom.overnight.selection import selected_lightgbm_kwargs
-from recsys_loom.overnight.transforms import weighted_labels
+from recsys_loom.overnight.transforms import popularity_sample_weights
 from recsys_loom.ranking.ranker import train_ranker
 
 
 def run_arm(train_snapshots, validation, relevance, article_ids, weighted: bool):
     train = combine_training(train_snapshots)
-    labels = weighted_labels(train) if weighted else train["labels"]
     model = train_ranker(
         train["features"],
-        labels,
+        train["labels"],
         train["groups"],
         [str(value) for value in train["feature_names"]],
         verbose=0,
+        weight=popularity_sample_weights(train) if weighted else None,
         **selected_lightgbm_kwargs(),
     )
     result = evaluate_model(model, validation, relevance, article_ids)

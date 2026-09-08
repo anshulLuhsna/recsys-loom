@@ -20,9 +20,8 @@ from recsys_loom.overnight.ranking import combine_training, fit_ranker
 from recsys_loom.overnight.transforms import (
     NEGATIVE_SCHEMES,
     add_crosses,
+    combined_sample_weights,
     downsample_snapshot,
-    row_weights_for_scheme,
-    weighted_labels,
 )
 from recsys_loom.ranking.ranker import train_ranker
 
@@ -75,17 +74,23 @@ def _fit_lightgbm(
     architecture = spec.get("architecture", {})
     ranker = architecture.get("ranker", {})
     kwargs = _ranker_kwargs(ranker)
-    uses_label_weights = architecture.get("label_weighting") == "inv_sqrt_popularity"
-    group_scheme = architecture.get("group_weighting")
-    if uses_label_weights or group_scheme:
+    sample_weight = None
+    train = None
+    if architecture.get("label_weighting") or architecture.get("group_weighting"):
         train = combine_training(prepared)
+        sample_weight = combined_sample_weights(
+            train,
+            label_weighting=architecture.get("label_weighting"),
+            group_weighting=architecture.get("group_weighting"),
+        )
+    if sample_weight is not None and train is not None:
         return train_ranker(
             train["features"],
-            weighted_labels(train) if uses_label_weights else train["labels"],
+            train["labels"],
             train["groups"],
             [str(value) for value in train["feature_names"]],
             verbose=0,
-            weight=row_weights_for_scheme(train, group_scheme),
+            weight=sample_weight,
             **kwargs,
         )
     return fit_ranker(prepared, **kwargs)
@@ -95,17 +100,16 @@ def _fit_catboost(prepared: list[dict[str, Any]], spec: dict[str, Any]) -> Any:
     architecture = spec.get("architecture", {})
     ranker = architecture.get("ranker", {})
     train = combine_training(prepared)
-    labels = (
-        weighted_labels(train)
-        if architecture.get("label_weighting") == "inv_sqrt_popularity"
-        else train["labels"]
-    )
     group_id = np.repeat(np.arange(len(train["groups"])), train["groups"])
     pool = Pool(
         data=np.nan_to_num(train["features"], nan=0.0),
-        label=labels,
+        label=train["labels"],
         group_id=group_id,
-        weight=row_weights_for_scheme(train, architecture.get("group_weighting")),
+        weight=combined_sample_weights(
+            train,
+            label_weighting=architecture.get("label_weighting"),
+            group_weighting=architecture.get("group_weighting"),
+        ),
     )
     model = CatBoostRanker(
         loss_function="YetiRank",
