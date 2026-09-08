@@ -1,0 +1,23 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./images:/app/images:ro
+      - ./articles.csv:/app/articles.csv:ro
+    environment:
+      - RECSYS_HOST=0.0.0.0
+  web:
+    image: node:22-alpine
+    working_dir: /web
+    volumes:
+      - ./apps/web:/web
+    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0"
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+    depends_on:
+      - api

@@ -50,13 +50,33 @@ Top 12
 
 Candidate-pool oracle MAP@12 is about 0.29 on these 2K development folds, so most of the remaining gap is ranking and irreducible next-week uncertainty, not missing retrieval of an already-found item. Historical 5K Sep 16–22 MAP@12 ≈ 0.028 is a contaminated reference only.
 
+## Ranking failure analysis
+
+On retrieved positives across the two development folds (n=3,576):
+
+| Slice | n | Median rank | Top-12 rate |
+|---|---:|---:|---:|
+| All retrieved positives | 3,576 | 101 | 15.6% |
+| Exact repeat | 538 | 6 | 61.3% |
+| Same product type, new article | 2,326 | 129 | 7.6% |
+| 1 retrieval source | 2,433 | 124 | 9.9% |
+| 3 sources | 253 | 32 | 37.9% |
+| Head popularity | 1,187 | 64 | 18.4% |
+| Long tail | 1,196 | 218 | 12.9% |
+| Repeat-only provenance | 225 | 6 | 61.8% |
+| ALS-only | 447 | 196 | 1.8% |
+| PMI-only | 564 | 199 | 1.1% |
+| Two-tower-only | 44 | 264 | 2.3% |
+
+LambdaRank already does the easy job: repeats and multi-source popular items. It systematically buries complementary-retriever positives. Buried long-tail positives and high-ranked long-tail negatives are barely separable on the current features (similar source count and ALS scores; type affinity is only a weak margin). That argues for more supervision and harder negatives, not a larger neural ranker.
+
 ## Experiment timeline
 
 | Stage | Status |
 |---|---|
 | Evaluation ledger | done |
 | BASELINE_RANKER | done, mean MAP@12 0.02707 |
-| Ranking failure analysis | queued |
+| Ranking failure analysis | done |
 | Scaled supervision | queued |
 | Hard negatives | queued |
 | Targeted crosses | queued |
@@ -66,6 +86,37 @@ Candidate-pool oracle MAP@12 is about 0.29 on these 2K development folds, so mos
 | GenRec-style | only if justified |
 | Customer-holdout final | after freeze |
 
+## Product architecture
+
+```text
+                         USER
+                          │
+          ┌───────────────┴────────────────┐
+          │                                │
+          ▼                                ▼
+   PERSONALIZED HOME                    SEARCH
+          │                                │
+   User history                     Query intent parser
+          │                                │
+          ▼                                ▼
+ Multi-source retrieval          BM25 + semantic + attrs
+          │                                │
+          ▼                                ▼
+      LambdaRank                      merge / RRF
+          │                                │
+          ▼                                ▼
+       Top 12                     query relevance rank
+                                           │
+                                           ▼
+                                  small personalization
+                                           │
+                                           ▼
+                                      search results
+```
+
+Home recommendations and search are separate systems. Search is evaluated
+only with a synthetic/structured benchmark because H&M has no query logs.
+
 ## Best system
 
-Not frozen yet.
+Not frozen yet. Current champion remains BASELINE_RANKER.
