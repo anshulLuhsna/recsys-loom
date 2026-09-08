@@ -97,9 +97,11 @@ LightGBM tune so far, development mean MAP@12:
 | num_leaves=31 | 0.02730 |
 | num_leaves=127 | 0.02494 |
 | min_child_samples=20 | 0.02600 |
-| min_child / lr / xendcg / L2 | running |
+| min_child_samples=100 | 0.02639 |
+| lr=0.03, 500 trees | 0.02799 |
+| lr=0.10 / xendcg / L2 | running |
 
-`num_leaves=31` is +0.00023 over baseline, just over the 0.0002 keep-simpler rule. Fold std on baseline is 0.00069, so this may still be noise. Remaining trials must finish before promoting it. Truncation and wider trees have lost.
+`lr=0.03` with 500 trees is the first material gain: **+0.00092** over baseline, well above the 0.0002 keep-simpler band. `num_leaves=31` (+0.00023) is inside the noise of the baseline fold std (0.00069). Remaining trials must finish before promotion. Truncation, 127 leaves, and both `min_child` settings have lost.
 
 ## Product architecture
 
