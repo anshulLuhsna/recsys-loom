@@ -77,14 +77,25 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | Evaluation ledger | done |
 | BASELINE_RANKER | done, mean MAP@12 0.02707 |
 | Ranking failure analysis | done |
-| Scaled supervision | queued |
+| Scaled supervision | queued behind LightGBM tune |
 | Hard negatives | queued |
 | Targeted crosses | queued |
-| LightGBM tune | queued |
+| LightGBM tune | running (truncation trials worse than baseline so far) |
 | CatBoost | queued |
 | Listwise reranker | queued |
 | GenRec-style | only if justified |
 | Customer-holdout final | after freeze |
+
+LightGBM tune so far, development mean MAP@12:
+
+| Trial | Mean MAP@12 |
+|---|---:|
+| baseline | 0.02707 |
+| lambdarank_truncation_level=12 | 0.02313 |
+| lambdarank_truncation_level=20 | 0.02538 |
+| truncation 30 / leaves / min_child / lr / xendcg / L2 | running |
+
+Truncating the LambdaRank objective toward Top-12 has not helped. Keep the default truncation unless a later trial wins by more than 0.0002.
 
 ## Product architecture
 
@@ -116,6 +127,22 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 
 Home recommendations and search are separate systems. Search is evaluated
 only with a synthetic/structured benchmark because H&M has no query logs.
+
+Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`):
+
+- Exact `{color} {type}` queries score 1.0 Precision@10 / NDCG@10 / MRR. That is
+  expected: structured retrieval returns the attribute intersection used as
+  labels. It is not real search quality.
+- Curated style queries (token overlap labels, 9 scored): Precision@10 0.667,
+  Recall@50 0.711, NDCG@10 0.775, MRR 0.788. `linen summer shirt` surfaces
+  linen shirts via BM25; `black oversized hoodie` returns black hoodies, with
+  oversized names ranked first.
+- Semantic MiniLM retrieval is implemented against
+  `artifacts/text_retrieval/text_embeddings.f32.npy` and is optional at serve
+  time (`SEARCH_SEMANTIC=0` skips the encoder). Full hybrid numbers wait until
+  ranking jobs release RAM.
+- A weakly supervised search LambdaRank exists (`scripts/run_search_ranker.py`)
+  and will be kept only if it beats this hybrid on held-out synthetic queries.
 
 ## Best system
 

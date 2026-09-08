@@ -6,6 +6,7 @@ import { ProductCard } from "@/components/ProductCard";
 import {
   fetchDemoCustomers,
   fetchRecommendations,
+  fetchTrending,
   type DemoCustomer,
   type ProductCard as Product,
 } from "@/lib/api";
@@ -15,6 +16,7 @@ export default function HomePage() {
   const [customerId, setCustomerId] = useState("");
   const [customId, setCustomId] = useState("");
   const [items, setItems] = useState<Product[]>([]);
+  const [trending, setTrending] = useState<Product[]>([]);
   const [showSignals, setShowSignals] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -28,12 +30,15 @@ export default function HomePage() {
           setCustomerId(rows[0].customer_id);
         }
       })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch((err: Error) => setError(err.message));
+    fetchTrending()
+      .then(setTrending)
+      .catch(() => setTrending([]));
   }, []);
 
   useEffect(() => {
     if (!customerId) {
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -88,6 +93,26 @@ export default function HomePage() {
           </button>
         </div>
       </section>
+      <section className="split">
+        <article>
+          <h2>Personalized home</h2>
+          <p className="lede">
+            Uses purchase history, multi-source retrieval, and LambdaRank. The
+            slate answers “what might this customer buy next week?”
+          </p>
+        </article>
+        <article>
+          <h2>Explicit search</h2>
+          <p className="lede">
+            Uses query intent, BM25, attributes, and optional semantics. The
+            grid answers “what matches this wording?” Personalization cannot
+            override the query.
+          </p>
+          <p className="lede">
+            <Link href="/search">Open catalog search</Link>
+          </p>
+        </article>
+      </section>
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <h2>Personalized Top 12</h2>
         <button className="toggle" type="button" onClick={() => setShowSignals((value) => !value)}>
@@ -95,7 +120,12 @@ export default function HomePage() {
         </button>
       </div>
       {loading ? <div className="loading">Scoring the slate…</div> : null}
-      {error ? <div className="error">{error}</div> : null}
+      {error ? (
+        <div className="error">
+          {error} Top-12 export waits until BEST_SYSTEM is frozen. Trending
+          below is the recent-popularity baseline.
+        </div>
+      ) : null}
       {!loading && !error && items.length === 0 ? (
         <div className="empty">No recommendations for this customer yet.</div>
       ) : null}
@@ -108,9 +138,24 @@ export default function HomePage() {
           />
         ))}
       </div>
-      <p className="lede">
-        Looking for something specific? <Link href="/search">Search the catalog</Link>.
-      </p>
+      {trending.length ? (
+        <>
+          <h2>Trending last week</h2>
+          <p className="lede">
+            Same 12 articles for every customer: recent-popularity before
+            2020-09-16. This is the non-personalized baseline.
+          </p>
+          <div className="grid">
+            {trending.map((product) => (
+              <ProductCard
+                key={product.article_id}
+                product={product}
+                showSignals={showSignals}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
     </main>
   );
 }

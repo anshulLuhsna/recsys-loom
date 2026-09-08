@@ -33,6 +33,16 @@ CURATED_QUERIES = [
 ]
 
 
+def style_relevance(article, intent) -> float:
+    if intent.product_type and article.product_type_name != intent.product_type:
+        return 0.0
+    text = article.search_text().lower()
+    if not intent.style_terms:
+        return 1.0 if intent.product_type else 0.0
+    hits = sum(1 for term in intent.style_terms if term in text)
+    return float(hits)
+
+
 def structured_relevance(article, intent) -> float:
     score = 0.0
     if intent.product_type and article.product_type_name == intent.product_type:
@@ -42,6 +52,51 @@ def structured_relevance(article, intent) -> float:
     if intent.section and section_family(article.section_name) == intent.section:
         score += 1.0
     return score
+
+
+def evaluate_style_queries(engine: SearchEngine, queries: list[str], articles) -> dict[str, float]:
+    precisions = []
+    recalls = []
+    ndcgs = []
+    mrrs = []
+    scored = 0
+    for query in queries:
+        intent = parse_query(query)
+        relevant = {
+            article_id
+            for article_id, article in articles.items()
+            if style_relevance(article, intent) >= 1.0
+        }
+        if not relevant:
+            continue
+        scored += 1
+        payload = engine.search(query, limit=50)
+        predicted = [row["article_id"] for row in payload["results"]]
+        hits10 = len(set(predicted[:10]).intersection(relevant))
+        hits50 = len(set(predicted[:50]).intersection(relevant))
+        precisions.append(hits10 / 10)
+        recalls.append(hits50 / min(len(relevant), 50))
+        graded = [
+            1.0 if article_id in relevant else 0.0 for article_id in predicted[:10]
+        ]
+        ndcgs.append(ndcg(graded, 10))
+        rank = next(
+            (
+                index
+                for index, article_id in enumerate(predicted, start=1)
+                if article_id in relevant
+            ),
+            None,
+        )
+        mrrs.append(0.0 if rank is None else 1.0 / rank)
+    return {
+        "queries_scored": scored,
+        "precision_at_10": sum(precisions) / scored if scored else 0.0,
+        "recall_at_50": sum(recalls) / scored if scored else 0.0,
+        "ndcg_at_10": sum(ndcgs) / scored if scored else 0.0,
+        "mrr": sum(mrrs) / scored if scored else 0.0,
+        "label": "style/token overlap on curated queries; not production search quality",
+    }
 
 
 def evaluate_queries(engine: SearchEngine, queries: list[str], articles) -> dict[str, float]:
@@ -89,12 +144,13 @@ def evaluate_queries(engine: SearchEngine, queries: list[str], articles) -> dict
 
 def main() -> None:
     ensure_directories()
+    load_semantic = "--lexical-only" not in sys.argv
     articles = load_articles()
     print(f"Loaded {len(articles):,} articles", flush=True)
     lexical = BM25Index()
     lexical.build(articles)
     structured = StructuredIndex(articles)
-    semantic = SemanticIndex.load(load_encoder=True)
+    semantic = SemanticIndex.load(load_encoder=True) if load_semantic else None
     engine = SearchEngine(articles, lexical, semantic, structured)
     structured_queries = generate_structured_queries(articles)
     holdout = structured_queries[::5]
@@ -102,8 +158,16 @@ def main() -> None:
     report = {
         "label": "synthetic search benchmark",
         "not": "real user search quality",
+        "channels": (
+            "bm25+semantic+structured" if load_semantic else "bm25+structured"
+        ),
         "structured_development": evaluate_queries(engine, development, articles),
         "structured_holdout": evaluate_queries(engine, holdout, articles),
+        "structured_note": (
+            "Exact color+type queries are solved by structured retrieval; "
+            "perfect scores are expected and are not search quality."
+        ),
+        "style_curated": evaluate_style_queries(engine, CURATED_QUERIES, articles),
         "curated_spotcheck": [
             {
                 "query": query,

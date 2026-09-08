@@ -120,6 +120,10 @@ def main() -> None:
             }
         )
         print(f"  mean MAP@12={mean_map:.5f} std={std_map:.5f}", flush=True)
+        (OVERNIGHT_DIR / "lgbm_tune.partial.json").write_text(
+            json.dumps({"trials": trial_rows}, indent=2),
+            encoding="utf-8",
+        )
 
     successful = [row for row in trial_rows if "mean_map_at_12" in row]
     best_mean = max(row["mean_map_at_12"] for row in successful)

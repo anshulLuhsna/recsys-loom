@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -12,14 +13,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from recsys_loom.overnight.protocol import OVERNIGHT_DIR, ROOT
-from recsys_loom.search.catalog import load_articles
-from recsys_loom.search.lexical import BM25Index
+from recsys_loom.search.catalog import Article, load_articles
 from recsys_loom.search.pipeline import SearchEngine
-from recsys_loom.search.semantic import SemanticIndex
-from recsys_loom.search.structured import StructuredIndex
+from recsys_loom.search.service import build_search_engine
 
 DEMO_PATH = OVERNIGHT_DIR / "demo_customers.json"
 REC_PATH = OVERNIGHT_DIR / "demo_recommendations.json"
+TRENDING_PATH = ROOT / "artifacts" / "recent_popularity_7d" / "metrics.json"
 IMAGES = ROOT / "images"
 
 
@@ -39,15 +39,7 @@ class RecommendationResponse(BaseModel):
 
 @lru_cache(maxsize=1)
 def engine() -> SearchEngine:
-    articles = load_articles()
-    lexical = BM25Index()
-    lexical.build(articles)
-    return SearchEngine(
-        articles,
-        lexical,
-        SemanticIndex.load(load_encoder=True),
-        StructuredIndex(articles),
-    )
+    return build_search_engine(load_semantic=os.environ.get("SEARCH_SEMANTIC", "1") != "0")
 
 
 @lru_cache(maxsize=1)
@@ -62,6 +54,25 @@ def demo_recommendations() -> dict[str, object]:
     if REC_PATH.exists():
         return json.loads(REC_PATH.read_text(encoding="utf-8"))
     return {}
+
+
+@lru_cache(maxsize=1)
+def catalog() -> dict[str, Article]:
+    return load_articles()
+
+
+def _lookup_article(article_id: str) -> Article | None:
+    articles = catalog()
+    if article_id in articles:
+        return articles[article_id]
+    padded = article_id.zfill(10)
+    if padded in articles:
+        return articles[padded]
+    stripped = article_id.lstrip("0") or "0"
+    for key, article in articles.items():
+        if key.lstrip("0") == stripped:
+            return article
+    return None
 
 
 app = FastAPI(title="RecSys Loom", version="0.1.0")
@@ -83,6 +94,27 @@ def health() -> dict[str, str]:
 @app.get("/api/demo-customers")
 def demo_customers() -> dict[str, object]:
     return demo_bundle()
+
+
+@app.get("/api/trending")
+def trending() -> dict[str, object]:
+    if not TRENDING_PATH.exists():
+        return {"items": [], "source": "missing"}
+    metrics = json.loads(TRENDING_PATH.read_text(encoding="utf-8"))
+    items = []
+    for row in metrics.get("top_articles", [])[:12]:
+        article = _lookup_article(str(row["article_id"]))
+        if article is None:
+            continue
+        card = article.to_card()
+        card["score"] = float(row.get("purchase_count", 0))
+        card["sources"] = ["recent_7d_pop"]
+        items.append(card)
+    return {
+        "source": "recent_7d_popularity",
+        "cutoff": "2020-09-15",
+        "items": items,
+    }
 
 
 @app.get("/api/recommendations/{customer_id}")
@@ -113,7 +145,7 @@ def search(request: SearchRequest) -> dict[str, object]:
 
 @app.get("/api/articles/{article_id}")
 def article(article_id: str) -> dict[str, str]:
-    article = engine().articles.get(article_id)
-    if article is None:
+    found = _lookup_article(article_id)
+    if found is None:
         raise HTTPException(status_code=404, detail="Unknown article")
-    return article.to_card()
+    return found.to_card()

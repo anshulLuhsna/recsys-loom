@@ -42,7 +42,7 @@ class SearchEngine:
         self,
         articles: dict[str, Article],
         lexical: BM25Index,
-        semantic: SemanticIndex,
+        semantic: SemanticIndex | None,
         structured: StructuredIndex,
     ):
         self.articles = articles
@@ -61,7 +61,11 @@ class SearchEngine:
         intent_ms = (time.perf_counter() - started) * 1000
         retrieve_started = time.perf_counter()
         bm25 = self.lexical.search(intent.free_text or query, k=200)
-        semantic = self.semantic.search(intent.free_text or query, k=200)
+        semantic = (
+            self.semantic.search(intent.free_text or query, k=200)
+            if self.semantic is not None
+            else []
+        )
         structured = self.structured.retrieve(intent, k=400)
         retrieve_ms = (time.perf_counter() - retrieve_started) * 1000
         rank_started = time.perf_counter()

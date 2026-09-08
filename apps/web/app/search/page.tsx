@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ProductCard } from "@/components/ProductCard";
 import {
   fetchDemoCustomers,
@@ -9,15 +9,28 @@ import {
   type ProductCard as Product,
 } from "@/lib/api";
 
+const EXAMPLES = [
+  "black oversized hoodie",
+  "linen shirt for summer",
+  "blue women's dress",
+  "minimal black trousers",
+  "casual green jacket",
+  "white top for office",
+];
+
 export default function SearchPage() {
   const [query, setQuery] = useState("black oversized hoodie");
   const [customers, setCustomers] = useState<DemoCustomer[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [items, setItems] = useState<Product[]>([]);
   const [chips, setChips] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState("");
+  const [colorFilter, setColorFilter] = useState("");
+  const [sectionFilter, setSectionFilter] = useState("");
   const [showSignals, setShowSignals] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
 
   useEffect(() => {
     fetchDemoCustomers()
@@ -25,15 +38,48 @@ export default function SearchPage() {
       .catch((err: Error) => setError(err.message));
   }, []);
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!query.trim()) {
+  const filtered = useMemo(
+    () =>
+      items.filter((item) => {
+        if (typeFilter && item.product_type !== typeFilter) {
+          return false;
+        }
+        if (colorFilter && item.color !== colorFilter) {
+          return false;
+        }
+        if (sectionFilter && item.section !== sectionFilter) {
+          return false;
+        }
+        return true;
+      }),
+    [items, typeFilter, colorFilter, sectionFilter],
+  );
+
+  const types = useMemo(
+    () => Array.from(new Set(items.map((item) => item.product_type).filter(Boolean))),
+    [items],
+  );
+  const colors = useMemo(
+    () => Array.from(new Set(items.map((item) => item.color).filter(Boolean))),
+    [items],
+  );
+  const sections = useMemo(
+    () => Array.from(new Set(items.map((item) => item.section).filter(Boolean))),
+    [items],
+  );
+
+  async function runSearch(nextQuery: string) {
+    if (!nextQuery.trim()) {
       return;
     }
     setLoading(true);
     setError("");
+    setSearched(true);
+    setTypeFilter("");
+    setColorFilter("");
+    setSectionFilter("");
     try {
-      const payload = await searchCatalog(query.trim(), customerId || undefined);
+      const payload = await searchCatalog(nextQuery.trim(), customerId || undefined);
       setItems(payload.results ?? []);
       const intent = payload.parsed_intent ?? {};
       setChips(
@@ -50,6 +96,11 @@ export default function SearchPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    await runSearch(query);
   }
 
   return (
@@ -79,6 +130,21 @@ export default function SearchPage() {
           </select>
         </div>
       </section>
+      <div className="examples">
+        {EXAMPLES.map((example) => (
+          <button
+            className="chip"
+            key={example}
+            type="button"
+            onClick={() => {
+              setQuery(example);
+              void runSearch(example);
+            }}
+          >
+            {example}
+          </button>
+        ))}
+      </div>
       <form className="searchbar" onSubmit={onSubmit}>
         <input
           type="search"
@@ -97,19 +163,72 @@ export default function SearchPage() {
           ))}
         </div>
       ) : null}
+      {items.length ? (
+        <div className="filters">
+          <div>
+            <label htmlFor="type-filter">Type</label>
+            <select
+              id="type-filter"
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+            >
+              <option value="">All types</option>
+              {types.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="color-filter">Color</label>
+            <select
+              id="color-filter"
+              value={colorFilter}
+              onChange={(event) => setColorFilter(event.target.value)}
+            >
+              <option value="">All colors</option>
+              {colors.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="section-filter">Section</label>
+            <select
+              id="section-filter"
+              value={sectionFilter}
+              onChange={(event) => setSectionFilter(event.target.value)}
+            >
+              <option value="">All sections</option>
+              {sections.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : null}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <h2>{items.length ? `${items.length} results` : "Results"}</h2>
+        <h2>
+          {searched
+            ? `${filtered.length} results`
+            : "Results"}
+        </h2>
         <button className="toggle" type="button" onClick={() => setShowSignals((value) => !value)}>
           {showSignals ? "Hide signals" : "Show signals"}
         </button>
       </div>
       {loading ? <div className="loading">Retrieving the catalog…</div> : null}
       {error ? <div className="error">{error}</div> : null}
-      {!loading && !error && items.length === 0 ? (
+      {!loading && !error && searched && filtered.length === 0 ? (
         <div className="empty">No products matched that query.</div>
       ) : null}
       <div className="grid">
-        {items.map((product) => (
+        {filtered.map((product) => (
           <ProductCard
             key={product.article_id}
             product={product}

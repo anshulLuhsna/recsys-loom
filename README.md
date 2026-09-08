@@ -606,8 +606,10 @@ to `.env` if you need to change ports.
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python scripts/export_demo_recommendations.py
-uvicorn services.recommender.app:app --reload --port 8000
+python scripts/export_demo_customers.py
+# After BEST_SYSTEM is frozen, also:
+# python scripts/export_demo_recommendations.py
+SEARCH_SEMANTIC=0 uvicorn services.recommender.app:app --reload --port 8000
 ```
 
 In another shell:

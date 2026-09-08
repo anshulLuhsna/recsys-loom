@@ -51,6 +51,15 @@ export async function fetchRecommendations(
   return response.json();
 }
 
+export async function fetchTrending(): Promise<ProductCard[]> {
+  const response = await fetch(`${API_URL}/api/trending`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Could not load trending");
+  }
+  const payload = (await response.json()) as { items?: ProductCard[] };
+  return payload.items ?? [];
+}
+
 export async function searchCatalog(
   query: string,
   customerId?: string,
