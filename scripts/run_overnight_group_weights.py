@@ -91,8 +91,16 @@ def main() -> None:
         }
     best_name = max(summary, key=lambda name: summary[name]["mean_map_at_12"])
     best_mean = summary[best_name]["mean_map_at_12"]
+    baseline_maps = summary["unweighted"]["fold_maps"]
     selected = "unweighted"
-    if best_mean > summary["unweighted"]["mean_map_at_12"] + MAP_TOLERANCE:
+    fold_consistent = all(
+        candidate + 1e-12 >= baseline - MAP_TOLERANCE
+        for candidate, baseline in zip(summary[best_name]["fold_maps"], baseline_maps)
+    )
+    if (
+        best_mean > summary["unweighted"]["mean_map_at_12"] + MAP_TOLERANCE
+        and fold_consistent
+    ):
         selected = best_name
     report = {
         "hypothesis": (

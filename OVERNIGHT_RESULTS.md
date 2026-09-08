@@ -14,8 +14,11 @@ LightGBM baseline **0.02707** (+0.00280, +10.3% relative). Both selection
 folds moved up. The LightGBM slower schedule was a real but smaller lift.
 Truncation, XENDCG, hard negatives, crosses, and extra weeks lost or tied.
 Listwise aborted with signal 11 after the sanity check (OOM on five loaded
-snapshots) and is rejected. Long-tail and group-weight experiments are in
-finalize. Customer-holdout MAP is not inspected yet.
+snapshots) and is rejected. Inverse-sqrt popularity weights scored 0.02743 vs unweighted 0.02799 and
+are rejected. Group-size weights raised the mean to 0.02832 but dropped
+the Sep 7 fold from 0.02811 to 0.02691, so they are rejected as not
+fold-consistent. `BEST_SYSTEM` is frozen as six-source CatBoost YetiRank
+with no extra weighting. Holdout export is running; holdout MAP is unread.
 
 ## Evaluation integrity
 
@@ -35,7 +38,8 @@ See `docs/evaluation_ledger.md`.
 
 These stand unless a new controlled development result overturns them:
 
-- LightGBM LambdaRank is the strongest ranker family so far.
+- LightGBM LambdaRank was the strongest ranker family before this run.
+  Overnight CatBoost YetiRank beat it on both development folds.
 - DCN V2 overfit and is not being blindly retried.
 - Metadata two-tower is complementary and budgeted at K=50.
 - Generic image-only DINOv2 retrieval is rejected.
@@ -95,10 +99,11 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | Scaled supervision | **reject**; 0.02809 vs current 0.02799 (+0.00010 < 0.0002) |
 | CatBoost YetiRank | **keep**; 0.02987 vs LightGBM 0.02799 |
 | Listwise reranker | **reject**; signal 11 / OOM after sanity check |
-| Long-tail weights | finalize |
-| Group-size / active-user weights | finalize |
+| Long-tail weights | **reject**; 0.02743 vs unweighted 0.02799 |
+| Group-size / active-user weights | **reject**; mean +0.00033 but Sep 7 fold fell |
 | GenRec-style | not justified by failure analysis |
-| Customer-holdout final | after freeze |
+| BEST_SYSTEM freeze | **frozen_for_holdout**: CatBoost YetiRank, four weeks |
+| Customer-holdout final | exporting 8K reserved customers |
 
 Official LightGBM tune, development mean MAP@12:
 
@@ -152,7 +157,7 @@ interactions. Keep the original feature set.
  Multi-source retrieval          BM25 + semantic + attrs
           │                                │
           ▼                                ▼
-      LambdaRank                      merge / RRF
+   CatBoost YetiRank                   merge / RRF
           │                                │
           ▼                                ▼
        Top 12                     query relevance rank
@@ -269,6 +274,16 @@ causal lift or satisfaction claim.
 
 ## Best system
 
-Not frozen yet. Current development champion is six-source CatBoost
-YetiRank (500 iterations, `lr=0.03`). Holdout MAP stays unread until
-`BEST_SYSTEM.json` is written with `status: frozen_for_holdout`.
+Frozen for holdout.
+
+```text
+Popularity + Repeat + PMI + ALS + metadata content + metadata two-tower K=50
+        ↓
+CatBoost YetiRank (500 iterations, lr=0.03, depth 6)
+        ↓
+Top 12
+```
+
+Decisions: `lr03_n500` schedule, four training weeks, all candidates, baseline
+features, no label/group weights, no listwise reranker. Holdout MAP is unread
+until evaluation finishes.
