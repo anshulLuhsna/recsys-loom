@@ -14,6 +14,7 @@ from recsys_loom.search.structured import (
     attribute_score,
     passes_hard_filters,
 )
+from recsys_loom.search.visual import VisualIndex
 
 
 @dataclass(slots=True)
@@ -44,11 +45,13 @@ class SearchEngine:
         lexical: BM25Index,
         semantic: SemanticIndex | None,
         structured: StructuredIndex,
+        visual: VisualIndex | None = None,
     ):
         self.articles = articles
         self.lexical = lexical
         self.semantic = semantic
         self.structured = structured
+        self.visual = visual
 
     def search(
         self,
@@ -66,6 +69,7 @@ class SearchEngine:
             if self.semantic is not None
             else []
         )
+        visual = self.visual.search(query, k=200) if self.visual is not None else []
         structured = self.structured.retrieve(intent, k=400)
         retrieve_ms = (time.perf_counter() - retrieve_started) * 1000
         rank_started = time.perf_counter()
@@ -77,6 +81,7 @@ class SearchEngine:
             structured,
             personalization or {},
             limit=limit,
+            visual=visual,
         )
         rank_ms = (time.perf_counter() - rank_started) * 1000
         cards = []
@@ -108,9 +113,12 @@ def fuse(
     structured: list[tuple[str, float]],
     personalization: dict[str, float],
     limit: int,
+    visual: list[tuple[str, float]] | None = None,
 ) -> list[SearchResult]:
+    visual = visual or []
     bm25_norm = _normalize({article_id: score for article_id, score in bm25})
     semantic_norm = _normalize({article_id: score for article_id, score in semantic})
+    visual_norm = _normalize({article_id: score for article_id, score in visual})
     structured_norm = _normalize({article_id: score for article_id, score in structured})
     personal_norm = _normalize(personalization)
     ranks = {
@@ -118,11 +126,19 @@ def fuse(
         "semantic": {
             article_id: rank for rank, (article_id, _) in enumerate(semantic, start=1)
         },
+        "visual": {
+            article_id: rank for rank, (article_id, _) in enumerate(visual, start=1)
+        },
         "structured": {
             article_id: rank for rank, (article_id, _) in enumerate(structured, start=1)
         },
     }
-    candidates = set(bm25_norm) | set(semantic_norm) | set(structured_norm)
+    candidates = (
+        set(bm25_norm)
+        | set(semantic_norm)
+        | set(visual_norm)
+        | set(structured_norm)
+    )
     if not candidates and personal_norm:
         candidates = set(list(personal_norm)[:50])
     scored: list[SearchResult] = []
@@ -141,6 +157,7 @@ def fuse(
             0.45 * bm25_norm.get(article_id, 0.0)
             + 0.35 * semantic_norm.get(article_id, 0.0)
             + 0.20 * structured_norm.get(article_id, 0.0)
+            + 0.25 * visual_norm.get(article_id, 0.0)
             + 0.15 * attribute_score(article, intent)
             + _rrf(ranks["bm25"].get(article_id, 10_000))
             + _rrf(ranks["semantic"].get(article_id, 10_000))
@@ -155,6 +172,7 @@ def fuse(
                 signals={
                     "bm25": bm25_norm.get(article_id, 0.0),
                     "semantic": semantic_norm.get(article_id, 0.0),
+                    "visual": visual_norm.get(article_id, 0.0),
                     "structured": structured_norm.get(article_id, 0.0),
                     "attributes": attribute_score(article, intent),
                     "personalization": personal,
@@ -162,5 +180,5 @@ def fuse(
                 },
             )
         )
-    scored.sort(key=lambda item: -item.score)
+    scored.sort(key=lambda item: (-item.score, item.article_id))
     return scored[:limit]

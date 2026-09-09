@@ -45,7 +45,7 @@ class StructuredIndex:
             if intent.section and section_family(article.section_name) == intent.section:
                 score += 1.0
             scored.append((article_id, score))
-        scored.sort(key=lambda item: -item[1])
+        scored.sort(key=lambda item: (-item[1], item[0]))
         return scored[:k]
 
 

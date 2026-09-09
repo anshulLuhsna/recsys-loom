@@ -158,7 +158,7 @@ interactions. Keep the original feature set.
    User history                     Query intent parser
           │                                │
           ▼                                ▼
- Multi-source retrieval          BM25 + semantic + attrs
+ Multi-source retrieval        BM25 + attrs + CLIP visual
           │                                │
           ▼                                ▼
    CatBoost YetiRank                   merge / RRF
@@ -182,16 +182,23 @@ Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`
   expected: structured retrieval returns the attribute intersection used as
   labels. It is not real search quality.
 - Curated style queries (token overlap labels, 9 scored): Precision@10 0.667,
-  Recall@50 0.711, NDCG@10 0.775, MRR 0.788. `linen summer shirt` surfaces
+  Recall@50 0.707, NDCG@10 0.777, MRR 0.788. `linen summer shirt` surfaces
   linen shirts via BM25; `black oversized hoodie` returns black hoodies, with
   oversized names ranked first.
 - Adding MiniLM preserved exact structured-query NDCG@10 at 1.0 and slightly
-  increased style Recall@50 from 0.711 to 0.713, but style NDCG@10 fell from
-  0.775 to 0.706 and MRR from 0.788 to 0.692. Reject it as the default under
+  increased style Recall@50 from 0.707 to 0.711, but style NDCG@10 fell from
+  0.777 to 0.722 and MRR from 0.788 to 0.710. Reject it as the default under
   this synthetic benchmark; it remains available with `SEARCH_SEMANTIC=1`.
   See `artifacts/overnight/search_semantic_ablation.json`.
-- A weakly supervised search LambdaRank exists (`scripts/run_search_ranker.py`)
-  and will be kept only if it beats this hybrid on held-out synthetic queries.
+- Frozen CLIP (`openai/clip-vit-base-patch32`) encoded 105,100 catalog images;
+  442 articles had no usable image. On five blinded image-only query judgments,
+  adding visual retrieval raised mean NDCG@10 from 0.282 to 0.673, improved all
+  five queries, and caused zero exact color/type constraint violations. Keep
+  it with `SEARCH_VISUAL=1`, but treat this tiny manual benchmark as directional
+  rather than production evidence. Structured and final fusion ties now break
+  by article ID; the corrected report reproduced byte-for-byte across reruns.
+- Weakly supervised search LambdaRank tied the simpler hybrid at NDCG@10 0.917
+  on its synthetic labels, so it remains rejected.
 
 ## Rejected ideas (already decided, not rerun)
 

@@ -27,6 +27,9 @@ function signalLines(product: Product): string[] {
   if (sources.includes("semantic")) {
     lines.push("Semantic match");
   }
+  if (sources.includes("visual")) {
+    lines.push("Visual match");
+  }
   if (sources.includes("structured")) {
     lines.push("Matches parsed attributes");
   }

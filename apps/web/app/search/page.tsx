@@ -113,8 +113,8 @@ export default function SearchPage() {
           <h1>Search.</h1>
           <p className="lede">
             Query relevance first, personalization second. This is a hybrid
-            lexical + semantic + structured catalog search, not a click-trained
-            search ranker.
+            lexical + structured + CLIP visual catalog search, not a
+            click-trained search ranker.
           </p>
         </div>
         <div className="panel">

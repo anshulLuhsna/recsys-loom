@@ -71,7 +71,11 @@ H&M provides purchases, not impressions, clicks, natural-language queries, expli
 
 Personalized home recommendations are trained/evaluated using historical H&M purchase data.
 
-Search is a hybrid retrieval/ranking demonstration built from product metadata and semantic representations. Because the H&M dataset contains no real search-query/click logs, search relevance is evaluated using synthetic/structured benchmarks rather than production search behavior.
+Search is a hybrid retrieval/ranking demonstration built from product metadata,
+lexical signals, and CLIP text-to-image similarity. MiniLM text semantics remain
+optional. Because the H&M dataset contains no real search-query/click logs,
+search relevance is evaluated using synthetic, structured, and small manual
+benchmarks rather than production search behavior.
 
 ## First prediction task
 
@@ -616,7 +620,9 @@ python -m pip install -r requirements.txt
 python scripts/export_demo_customers.py
 # After BEST_SYSTEM is frozen, also:
 # python scripts/export_demo_recommendations.py
-SEARCH_SEMANTIC=0 uvicorn services.recommender.app:app --reload --port 8000
+# One-time local CLIP artifact build:
+# python scripts/encode_visual_search_images.py 64
+SEARCH_SEMANTIC=0 SEARCH_VISUAL=1 uvicorn services.recommender.app:app --reload --port 8000
 ```
 
 In another shell:
@@ -638,7 +644,8 @@ docker compose up --build
 
 The API image serves FastAPI. The web image is a production Next.js build.
 Mount local `artifacts/`, `articles.csv`, and optional `images/` into the API
-container. Set `SEARCH_SEMANTIC=0` if the MiniLM encoder should not load.
+container. Set `SEARCH_SEMANTIC=0` to skip MiniLM. Set `SEARCH_VISUAL=1` only
+when `artifacts/visual_search/` contains the encoded CLIP matrix.
 
 The recommendation endpoint reads precomputed `BEST_SYSTEM` Top-12 slates for
 five real demo customers from `artifacts/overnight/demo_recommendations.json`.
@@ -647,7 +654,8 @@ in-memory BM25 and structured indexes lazily on the first search request and
 then reuses them. When `SEARCH_SEMANTIC=1`, the same lazy initialization also
 loads the MiniLM query encoder and frozen article-text embeddings. MiniLM is
 off by default because it reduced style-query NDCG@10 in the synthetic
-ablation, despite a small Recall@50 increase.
+ablation, despite a small Recall@50 increase. With `SEARCH_VISUAL=1`, the same
+lazy initialization loads the frozen CLIP image matrix and text encoder.
 
 Raw H&M CSVs and the full image archive stay local and are not shipped as Git
 artifacts. The public demo should use a precomputed demo-customer subset plus

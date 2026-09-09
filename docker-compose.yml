@@ -10,6 +10,7 @@ services:
     environment:
       - RECSYS_HOST=0.0.0.0
       - SEARCH_SEMANTIC=${SEARCH_SEMANTIC:-0}
+      - SEARCH_VISUAL=${SEARCH_VISUAL:-0}
   web:
     build:
       context: ./apps/web
