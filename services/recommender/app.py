@@ -39,7 +39,7 @@ class RecommendationResponse(BaseModel):
 
 @lru_cache(maxsize=1)
 def engine() -> SearchEngine:
-    return build_search_engine(load_semantic=os.environ.get("SEARCH_SEMANTIC", "1") != "0")
+    return build_search_engine(load_semantic=os.environ.get("SEARCH_SEMANTIC", "0") != "0")
 
 
 @lru_cache(maxsize=1)

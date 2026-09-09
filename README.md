@@ -645,7 +645,9 @@ five real demo customers from `artifacts/overnight/demo_recommendations.json`.
 It does not run CatBoost during an API request. The search engine builds its
 in-memory BM25 and structured indexes lazily on the first search request and
 then reuses them. When `SEARCH_SEMANTIC=1`, the same lazy initialization also
-loads the MiniLM query encoder and frozen article-text embeddings.
+loads the MiniLM query encoder and frozen article-text embeddings. MiniLM is
+off by default because it reduced style-query NDCG@10 in the synthetic
+ablation, despite a small Recall@50 increase.
 
 Raw H&M CSVs and the full image archive stay local and are not shipped as Git
 artifacts. The public demo should use a precomputed demo-customer subset plus

@@ -185,10 +185,11 @@ Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`
   Recall@50 0.711, NDCG@10 0.775, MRR 0.788. `linen summer shirt` surfaces
   linen shirts via BM25; `black oversized hoodie` returns black hoodies, with
   oversized names ranked first.
-- Semantic MiniLM retrieval is implemented against
-  `artifacts/text_retrieval/text_embeddings.f32.npy` and is optional at serve
-  time (`SEARCH_SEMANTIC=0` skips the encoder). Full hybrid numbers wait until
-  ranking jobs release RAM.
+- Adding MiniLM preserved exact structured-query NDCG@10 at 1.0 and slightly
+  increased style Recall@50 from 0.711 to 0.713, but style NDCG@10 fell from
+  0.775 to 0.706 and MRR from 0.788 to 0.692. Reject it as the default under
+  this synthetic benchmark; it remains available with `SEARCH_SEMANTIC=1`.
+  See `artifacts/overnight/search_semantic_ablation.json`.
 - A weakly supervised search LambdaRank exists (`scripts/run_search_ranker.py`)
   and will be kept only if it beats this hybrid on held-out synthetic queries.
 

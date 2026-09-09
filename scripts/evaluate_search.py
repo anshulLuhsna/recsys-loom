@@ -185,7 +185,8 @@ def main() -> None:
             for query in CURATED_QUERIES
         ],
     }
-    path = OVERNIGHT_DIR / "search_synthetic_eval.json"
+    channel = "hybrid" if load_semantic else "lexical"
+    path = OVERNIGHT_DIR / f"search_synthetic_eval_{channel}.json"
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps({
         "development": report["structured_development"],
