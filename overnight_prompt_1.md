@@ -35,7 +35,7 @@ Run a staged experiment tree:
 5. serious LambdaRank tuning;
 6. alternative tree ranking objective/model;
 7. listwise/set-aware reranking experiment;
-8. optional GenRec-style final reranker if justified;
+8. optional GenRec-inspired final reranker if justified;
 9. full-scale evaluation;
 10. final documentation.
 
@@ -895,7 +895,7 @@ If it immediately overfits and loses badly, prune the branch.
 
 ---
 
-# 13. STAGE 8 — OPTIONAL GENREC-STYLE FINAL RERANKER
+# 13. STAGE 8 — OPTIONAL GENREC-INSPIRED FINAL RERANKER
 
 Run this ONLY if one of the following is true:
 

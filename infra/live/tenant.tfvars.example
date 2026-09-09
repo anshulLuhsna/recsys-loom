@@ -1,0 +1,22 @@
+# Copy to tenant.tfvars and replace identifiers. Do not put credentials here.
+# Apply with both tenant and environment files:
+# terraform plan -var-file=tenant.tfvars -var-file=environment.tfvars
+
+project_name = "recsys-loom"
+tenant_name  = "demo"
+
+ecr_repository_arns = [
+  "arn:aws:ecr:ap-south-1:123456789012:repository/recsys-loom-recommendation",
+  "arn:aws:ecr:ap-south-1:123456789012:repository/recsys-loom-search",
+]
+
+serving_bundle_bucket_arn = "arn:aws:s3:::replace-with-serving-bundle-bucket"
+serving_bundle_prefix     = "serving/"
+deployment_config_prefix  = "ops/"
+
+# Leave null while using the Elastic IP directly.
+route53_record = null
+
+extra_tags = {
+  Owner = "replace-with-owner"
+}

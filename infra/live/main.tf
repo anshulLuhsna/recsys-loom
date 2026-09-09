@@ -1,0 +1,32 @@
+module "tenant" {
+  source = "../modules/tenant"
+
+  project_name                   = var.project_name
+  tenant_name                    = var.tenant_name
+  environment                    = var.environment
+  vpc_cidr                       = var.vpc_cidr
+  public_subnet_cidr             = var.public_subnet_cidr
+  availability_zone              = var.availability_zone
+  ssh_allowed_cidrs              = var.ssh_allowed_cidrs
+  key_name                       = var.key_name
+  candidate_ssh_public_key       = var.candidate_ssh_public_key
+  ami_id                         = var.ami_id
+  instance_type                  = var.instance_type
+  root_volume_size_gib           = var.root_volume_size_gib
+  enable_lab_fault_volume        = var.enable_lab_fault_volume
+  lab_fault_volume_size_gib      = var.lab_fault_volume_size_gib
+  ecr_repository_arns            = var.ecr_repository_arns
+  serving_bundle_bucket_arn      = var.serving_bundle_bucket_arn
+  serving_bundle_prefix          = var.serving_bundle_prefix
+  deployment_config_prefix       = var.deployment_config_prefix
+  log_retention_days             = var.log_retention_days
+  alarm_action_arns              = var.alarm_action_arns
+  cpu_alarm_threshold_percent    = var.cpu_alarm_threshold_percent
+  cpu_credit_alarm_threshold     = var.cpu_credit_alarm_threshold
+  memory_alarm_threshold_percent = var.memory_alarm_threshold_percent
+  swap_alarm_threshold_percent   = var.swap_alarm_threshold_percent
+  disk_alarm_threshold_percent   = var.disk_alarm_threshold_percent
+  inode_free_alarm_threshold     = var.inode_free_alarm_threshold
+  route53_record                 = var.route53_record
+  extra_tags                     = var.extra_tags
+}

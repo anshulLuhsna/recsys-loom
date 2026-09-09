@@ -18,3 +18,11 @@ dist/
 catboost_info/
 apps/web/.next/
 apps/web/out/
+*.tsbuildinfo
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+release/
+logs/

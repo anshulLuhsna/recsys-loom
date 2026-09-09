@@ -1,0 +1,9 @@
+/opt/recsys-loom/logs/*.log {
+    size 10M
+    rotate 3
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

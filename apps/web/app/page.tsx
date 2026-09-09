@@ -17,6 +17,11 @@ export default function HomePage() {
   const [customId, setCustomId] = useState("");
   const [items, setItems] = useState<Product[]>([]);
   const [trending, setTrending] = useState<Product[]>([]);
+  const [serving, setServing] = useState<{
+    mode?: string;
+    candidates?: number;
+    latencyMs?: number;
+  } | null>(null);
   const [showSignals, setShowSignals] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -44,9 +49,17 @@ export default function HomePage() {
     setLoading(true);
     setError("");
     fetchRecommendations(customerId)
-      .then((payload) => setItems(payload.recommendations ?? []))
+      .then((payload) => {
+        setItems(payload.recommendations ?? []);
+        setServing({
+          mode: payload.serving_mode,
+          candidates: payload.candidate_count,
+          latencyMs: payload.latency_ms,
+        });
+      })
       .catch((err: Error) => {
         setItems([]);
+        setServing(null);
         setError(err.message);
       })
       .finally(() => setLoading(false));
@@ -105,9 +118,9 @@ export default function HomePage() {
         <article>
           <h2>Explicit search</h2>
           <p className="lede">
-            Uses query intent, BM25, attributes, and optional semantics. The
-            grid answers “what matches this wording?” Personalization cannot
-            override the query.
+            Uses query intent, BM25, attributes, and CLIP visual retrieval.
+            MiniLM remains optional. The grid answers “what matches this
+            wording?” Personalization cannot override the query.
           </p>
           <p className="lede">
             <Link href="/search">Open catalog search</Link>
@@ -115,7 +128,16 @@ export default function HomePage() {
         </article>
       </section>
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <h2>Personalized Top 12</h2>
+        <div>
+          <h2>Personalized Top 12</h2>
+          {serving?.mode ? (
+            <p>
+              {serving.mode === "live_catboost"
+                ? `Live CatBoost inference over ${serving.candidates ?? 0} candidates · ${(serving.latencyMs ?? 0).toFixed(1)} ms`
+                : "Precomputed demo fallback"}
+            </p>
+          ) : null}
+        </div>
         <button className="toggle" type="button" onClick={() => setShowSignals((value) => !value)}>
           {showSignals ? "Hide signals" : "Show signals"}
         </button>
@@ -123,8 +145,8 @@ export default function HomePage() {
       {loading ? <div className="loading">Scoring the slate…</div> : null}
       {error ? (
         <div className="error">
-          {error} Top-12 export waits until BEST_SYSTEM is frozen. Trending
-          below is the recent-popularity baseline.
+          {error}. Choose one of the demo customers or an ID from the exported
+          serving set. Trending below is the recent-popularity baseline.
         </div>
       ) : null}
       {!loading && !error && items.length === 0 ? (

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 from recsys_loom.overnight.protocol import ROOT
@@ -73,7 +74,10 @@ class Article:
 
 
 def load_articles(path: Path | None = None) -> dict[str, Article]:
-    csv_path = path or (ROOT / "articles.csv")
+    configured_path = os.environ.get("CATALOG_PATH")
+    csv_path = path or (
+        Path(configured_path) if configured_path else ROOT / "articles.csv"
+    )
     articles: dict[str, Article] = {}
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)

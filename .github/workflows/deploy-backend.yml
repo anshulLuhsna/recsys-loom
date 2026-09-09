@@ -1,0 +1,327 @@
+name: Deploy backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Caddyfile"
+      - "Dockerfile.recommendation"
+      - "Dockerfile.search"
+      - "docker-compose.prod.yml"
+      - "requirements*.txt"
+      - "recsys_loom/**"
+      - "services/**"
+      - "ops/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+    inputs:
+      serving_bundle_uri:
+        description: Immutable S3 bundle URI; may contain {version}
+        required: false
+        type: string
+      serving_bundle_version:
+        description: Version paired with the serving bundle
+        required: false
+        type: string
+      public_base_url:
+        description: Public API origin override
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.ref_protected == true
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      ECR_RECOMMENDATION_REPOSITORY: ${{ vars.ECR_RECOMMENDATION_REPOSITORY }}
+      ECR_SEARCH_REPOSITORY: ${{ vars.ECR_SEARCH_REPOSITORY }}
+      DEPLOYMENT_CONFIG_BUCKET: ${{ vars.DEPLOYMENT_CONFIG_BUCKET }}
+      DEPLOYMENT_CONFIG_PREFIX: ${{ vars.DEPLOYMENT_CONFIG_PREFIX || 'ops' }}
+      ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+      PUBLIC_BASE_URL: ${{ inputs.public_base_url || vars.BACKEND_BASE_URL }}
+      REQUESTED_BUNDLE_URI: ${{ inputs.serving_bundle_uri || vars.SERVING_BUNDLE_URI }}
+      REQUESTED_BUNDLE_VERSION: ${{ inputs.serving_bundle_version || vars.SERVING_BUNDLE_VERSION }}
+      SSM_INSTANCE_ID: ${{ vars.SSM_INSTANCE_ID }}
+    steps:
+      - name: Validate deployment inputs
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            AWS_REGION \
+            AWS_ROLE_ARN \
+            ECR_RECOMMENDATION_REPOSITORY \
+            ECR_SEARCH_REPOSITORY \
+            DEPLOYMENT_CONFIG_BUCKET \
+            ALLOWED_ORIGINS \
+            PUBLIC_BASE_URL \
+            SSM_INSTANCE_ID; do
+            [[ -n "${!name}" ]] || {
+              echo "Required repository variable is empty: $name" >&2
+              exit 1
+            }
+          done
+          [[ "$SSM_INSTANCE_ID" =~ ^i-[0-9a-f]{8,17}$ ]] || {
+            echo "SSM_INSTANCE_ID must be an EC2 instance ID" >&2
+            exit 1
+          }
+          [[ "$PUBLIC_BASE_URL" =~ ^https://[^/[:space:]\'\"]+/?$ ]] || {
+            echo "BACKEND_BASE_URL must be an HTTPS origin without a path" >&2
+            exit 1
+          }
+          [[ "$DEPLOYMENT_CONFIG_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || {
+            echo "DEPLOYMENT_CONFIG_BUCKET is not a valid S3 bucket name" >&2
+            exit 1
+          }
+          [[ "$DEPLOYMENT_CONFIG_PREFIX" =~ ^[A-Za-z0-9._/-]+$ ]] || {
+            echo "DEPLOYMENT_CONFIG_PREFIX is invalid" >&2
+            exit 1
+          }
+          [[ "$DEPLOYMENT_CONFIG_PREFIX" != *".."* ]] || {
+            echo "DEPLOYMENT_CONFIG_PREFIX must not contain '..'" >&2
+            exit 1
+          }
+          [[ "$DEPLOYMENT_CONFIG_PREFIX" != /* ]] || {
+            echo "DEPLOYMENT_CONFIG_PREFIX must be relative" >&2
+            exit 1
+          }
+          [[ "$ALLOWED_ORIGINS" =~ ^https://[^[:space:],]+(,https://[^[:space:],]+)*$ ]] || {
+            echo "ALLOWED_ORIGINS must contain comma-separated HTTPS origins" >&2
+            exit 1
+          }
+          bundle_uri="$REQUESTED_BUNDLE_URI"
+          bundle_version="$REQUESTED_BUNDLE_VERSION"
+          if [[ -n "$bundle_uri" ]]; then
+            bundle_version="${bundle_version:-$GITHUB_SHA}"
+            [[ "$bundle_version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || exit 1
+            bundle_uri="${bundle_uri//\{version\}/$bundle_version}"
+            [[ "$bundle_uri" =~ ^s3://[A-Za-z0-9.-]+/[A-Za-z0-9._/-]+$ ]] || exit 1
+          elif [[ -n "$bundle_version" ]]; then
+            echo "A bundle version requires a bundle URI" >&2
+            exit 1
+          fi
+          echo "bundle_uri=$bundle_uri" >> "$GITHUB_OUTPUT"
+          echo "bundle_version=$bundle_version" >> "$GITHUB_OUTPUT"
+          echo "public_base_url=${PUBLIC_BASE_URL%/}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: recsys-loom-${{ github.run_id }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Publish immutable deployment configuration
+        id: deployment-config
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/recsys-loom-ops-$GITHUB_SHA.tar.gz"
+          tar -czf "$archive" \
+            Caddyfile \
+            docker-compose.prod.yml \
+            ops
+          key="${DEPLOYMENT_CONFIG_PREFIX%/}/$GITHUB_SHA.tar.gz"
+          aws s3 cp --only-show-errors "$archive" "s3://$DEPLOYMENT_CONFIG_BUCKET/$key"
+          echo "uri=s3://$DEPLOYMENT_CONFIG_BUCKET/$key" >> "$GITHUB_OUTPUT"
+
+      - name: Check immutable image state
+        id: image-state
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in recommendation search; do
+            if [[ "$service" == recommendation ]]; then
+              repository="$ECR_RECOMMENDATION_REPOSITORY"
+            else
+              repository="$ECR_SEARCH_REPOSITORY"
+            fi
+            digest="$(
+              aws ecr batch-get-image \
+                --repository-name "$repository" \
+                --image-ids "imageTag=$GITHUB_SHA" \
+                --query 'images[0].imageId.imageDigest' \
+                --output text 2>/dev/null || true
+            )"
+            if [[ "$digest" == sha256:* ]]; then
+              echo "${service}_exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "${service}_exists=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push recommendation image
+        if: steps.image-state.outputs.recommendation_exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.recommendation
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_RECOMMENDATION_REPOSITORY }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=recommendation
+          cache-to: type=gha,mode=max,scope=recommendation
+
+      - name: Build and push search image
+        if: steps.image-state.outputs.search_exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.search
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_SEARCH_REPOSITORY }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=search
+          cache-to: type=gha,mode=max,scope=search
+
+      - name: Resolve immutable image digests
+        id: images
+        shell: bash
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          resolve_image() {
+            local repository="$1"
+            local digest
+            digest="$(
+              aws ecr batch-get-image \
+                --repository-name "$repository" \
+                --image-ids "imageTag=$GITHUB_SHA" \
+                --query 'images[0].imageId.imageDigest' \
+                --output text
+            )"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+            printf '%s/%s@%s' "$ECR_REGISTRY" "$repository" "$digest"
+          }
+          echo "recommendation=$(resolve_image "$ECR_RECOMMENDATION_REPOSITORY")" >> "$GITHUB_OUTPUT"
+          echo "search=$(resolve_image "$ECR_SEARCH_REPOSITORY")" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy through AWS Systems Manager
+        id: ssm
+        shell: bash
+        env:
+          RECOMMENDATION_IMAGE: ${{ steps.images.outputs.recommendation }}
+          SEARCH_IMAGE: ${{ steps.images.outputs.search }}
+          SERVING_BUNDLE_URI: ${{ steps.release.outputs.bundle_uri }}
+          SERVING_BUNDLE_VERSION: ${{ steps.release.outputs.bundle_version }}
+          DEPLOY_PUBLIC_BASE_URL: ${{ steps.release.outputs.public_base_url }}
+          DEPLOYMENT_CONFIG_URI: ${{ steps.deployment-config.outputs.uri }}
+        run: |
+          set -euo pipefail
+          quote_for_sh() {
+            local value="$1"
+            value="${value//\'/\'\"\'\"\'}"
+            printf "'%s'" "$value"
+          }
+          deploy_command="$(
+            printf \
+              'set -euo pipefail; work=$(mktemp -d); aws s3 cp --only-show-errors %s "$work/config.tar.gz"; tar -xzf "$work/config.tar.gz" -C "$work"; sudo env API_DOMAIN=%s ALLOWED_ORIGINS=%s APP_DIR=/opt/recsys-loom/app "$work/ops/install-release.sh"; sudo env RECOMMENDATION_IMAGE=%s SEARCH_IMAGE=%s SERVING_BUNDLE_URI=%s SERVING_BUNDLE_VERSION=%s PUBLIC_BASE_URL=%s DEPLOYMENT_SHA=%s /opt/recsys-loom/app/deploy.sh; rm -rf "$work"' \
+              "$(quote_for_sh "$DEPLOYMENT_CONFIG_URI")" \
+              "$(quote_for_sh "${DEPLOY_PUBLIC_BASE_URL#https://}")" \
+              "$(quote_for_sh "$ALLOWED_ORIGINS")" \
+              "$(quote_for_sh "$RECOMMENDATION_IMAGE")" \
+              "$(quote_for_sh "$SEARCH_IMAGE")" \
+              "$(quote_for_sh "$SERVING_BUNDLE_URI")" \
+              "$(quote_for_sh "$SERVING_BUNDLE_VERSION")" \
+              "$(quote_for_sh "$DEPLOY_PUBLIC_BASE_URL")" \
+              "$(quote_for_sh "$GITHUB_SHA")"
+          )"
+          parameters="$(
+            jq -cn --arg command "$deploy_command" \
+              '{commands: [$command], executionTimeout: ["1800"]}'
+          )"
+          command_id="$(
+            aws ssm send-command \
+              --document-name AWS-RunShellScript \
+              --instance-ids "$SSM_INSTANCE_ID" \
+              --comment "Deploy recsys-loom $GITHUB_SHA" \
+              --parameters "$parameters" \
+              --query 'Command.CommandId' \
+              --output text
+          )"
+          echo "command_id=$command_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for host deployment
+        shell: bash
+        env:
+          COMMAND_ID: ${{ steps.ssm.outputs.command_id }}
+        run: |
+          set -euo pipefail
+          status=""
+          for _attempt in $(seq 1 180); do
+            response="$(
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$SSM_INSTANCE_ID" \
+                --output json 2>/dev/null || true
+            )"
+            status="$(jq -r '.Status // empty' <<< "$response")"
+            case "$status" in
+              Pending|InProgress|Delayed|"")
+                sleep 10
+                ;;
+              Success)
+                break
+                ;;
+              *)
+                jq -r '.StandardErrorContent // empty' <<< "$response" >&2
+                exit 1
+                ;;
+            esac
+          done
+          [[ "$status" == "Success" ]] || {
+            echo "SSM deployment timed out" >&2
+            exit 1
+          }
+
+      - name: Verify public HTTPS readiness
+        shell: bash
+        env:
+          DEPLOY_PUBLIC_BASE_URL: ${{ steps.release.outputs.public_base_url }}
+        run: |
+          set -euo pipefail
+          for path in /health/recommendation /health/search; do
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --retry 12 \
+              --retry-all-errors \
+              --retry-delay 5 \
+              --connect-timeout 10 \
+              --max-time 20 \
+              "$DEPLOY_PUBLIC_BASE_URL$path" >/dev/null
+          done

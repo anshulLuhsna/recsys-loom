@@ -1,0 +1,119 @@
+name: recsys-loom
+
+x-common-environment: &common-environment
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?set ALLOWED_ORIGINS}
+  CATALOG_PATH: /app/articles.csv
+  MODEL_VERSION: ${MODEL_VERSION:-BEST_SYSTEM}
+
+x-runtime: &runtime
+  restart: unless-stopped
+  init: true
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:size=128m,mode=1777
+  pids_limit: 512
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+  networks:
+    - backend
+
+services:
+  recommendation-api:
+    <<: *runtime
+    image: ${RECOMMENDATION_IMAGE:?set RECOMMENDATION_IMAGE}
+    volumes:
+      - ${RELEASE_DIR:?set RELEASE_DIR}/artifacts:/app/artifacts:ro
+      - ${RELEASE_DIR:?set RELEASE_DIR}/articles.csv:/app/articles.csv:ro
+    environment:
+      <<: *common-environment
+      IMAGE_DIGEST: ${RECOMMENDATION_IMAGE_DIGEST:?set RECOMMENDATION_IMAGE_DIGEST}
+    mem_limit: ${RECOMMENDATION_MEMORY_LIMIT:-768m}
+    cpus: ${RECOMMENDATION_CPU_LIMIT:-0.75}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  search-api:
+    <<: *runtime
+    image: ${SEARCH_IMAGE:?set SEARCH_IMAGE}
+    volumes:
+      - ${RELEASE_DIR:?set RELEASE_DIR}/artifacts:/app/artifacts:ro
+      - ${RELEASE_DIR:?set RELEASE_DIR}/articles.csv:/app/articles.csv:ro
+      - hf_cache:/var/cache/huggingface
+    environment:
+      <<: *common-environment
+      IMAGE_DIGEST: ${SEARCH_IMAGE_DIGEST:?set SEARCH_IMAGE_DIGEST}
+      RECOMMENDATION_SERVICE_URL: http://recommendation-api:8000
+      RECOMMENDATION_TIMEOUT_SECONDS: ${RECOMMENDATION_TIMEOUT_SECONDS:-0.35}
+      SEARCH_SEMANTIC: ${SEARCH_SEMANTIC:-0}
+      SEARCH_WARM_ON_READINESS: ${SEARCH_WARM_ON_READINESS:-1}
+      SEARCH_VISUAL: ${SEARCH_VISUAL:-0}
+      SEARCH_LLM: ${SEARCH_LLM:-0}
+      SEARCH_LLM_BASE_URL: ${SEARCH_LLM_BASE_URL:-https://api.groq.com/openai/v1}
+      SEARCH_LLM_API_KEY: ${SEARCH_LLM_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      SEARCH_LLM_MODEL: ${SEARCH_LLM_MODEL:-llama-3.3-70b-versatile}
+      SEARCH_LLM_TIMEOUT_SECONDS: ${SEARCH_LLM_TIMEOUT_SECONDS:-4}
+      SEARCH_LLM_RERANK_LIMIT: ${SEARCH_LLM_RERANK_LIMIT:-30}
+      SEARCH_LLM_MAX_CALLS_PER_MINUTE: ${SEARCH_LLM_MAX_CALLS_PER_MINUTE:-30}
+    mem_limit: ${SEARCH_MEMORY_LIMIT:-2g}
+    cpus: ${SEARCH_CPU_LIMIT:-1.5}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2.10-alpine}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${IMAGES_DIR:?set IMAGES_DIR}:/srv/images:ro
+      - ${LOG_DIR:-./logs}/caddy:/var/log/caddy
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+    mem_limit: 192m
+    cpus: 0.25
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  hf_cache:

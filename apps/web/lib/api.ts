@@ -1,5 +1,7 @@
-export const API_URL =
+const configuredApiUrl =
   process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+
+export const API_URL = configuredApiUrl.replace(/\/+$/, "");
 
 export type ProductCard = {
   article_id: string;
@@ -40,7 +42,13 @@ export async function fetchDemoCustomers(): Promise<DemoCustomer[]> {
 
 export async function fetchRecommendations(
   customerId: string,
-): Promise<{ recommendations: ProductCard[]; model_version?: string; candidate_count?: number }> {
+): Promise<{
+  recommendations: ProductCard[];
+  model_version?: string;
+  serving_mode?: string;
+  candidate_count?: number;
+  latency_ms?: number;
+}> {
   const response = await fetch(
     `${API_URL}/api/recommendations/${encodeURIComponent(customerId)}`,
     { cache: "no-store" },

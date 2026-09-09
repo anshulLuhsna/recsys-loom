@@ -105,7 +105,8 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | Listwise reranker | **reject**; signal 11 / OOM after sanity check |
 | Long-tail weights | **reject**; 0.02743 vs unweighted 0.02799 |
 | Group-size / active-user weights | **reject**; mean +0.00033 but Sep 7 fold fell |
-| GenRec-style | not justified by failure analysis |
+| GenRec-inspired purchase reranker | not justified by recommendation failure analysis |
+| GenRec-inspired catalog search | opt-in provider path implemented; live provider evaluation pending |
 | BEST_SYSTEM freeze | **frozen_for_holdout**: CatBoost YetiRank, four weeks |
 | Customer-holdout final | **0.03068 MAP@12** on 8,000 unused buyers |
 
@@ -187,8 +188,10 @@ Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`
   oversized names ranked first.
 - Adding MiniLM preserved exact structured-query NDCG@10 at 1.0 and slightly
   increased style Recall@50 from 0.707 to 0.711, but style NDCG@10 fell from
-  0.777 to 0.722 and MRR from 0.788 to 0.710. Reject it as the default under
-  this synthetic benchmark; it remains available with `SEARCH_SEMANTIC=1`.
+  0.777 to 0.722 and MRR from 0.788 to 0.710. Keep it disabled by default
+  because it did not improve this lexical/token-overlap synthetic benchmark.
+  Real semantic-search value remains inconclusive because those labels are
+  circular and favor BM25. It remains available with `SEARCH_SEMANTIC=1`.
   See `artifacts/overnight/search_semantic_ablation.json`.
 - Frozen CLIP (`openai/clip-vit-base-patch32`) encoded 105,100 catalog images;
   442 articles had no usable image. On five blinded image-only query judgments,
@@ -199,6 +202,17 @@ Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`
   by article ID; the corrected report reproduced byte-for-byte across reruns.
 - Weakly supervised search LambdaRank tied the simpler hybrid at NDCG@10 0.917
   on its synthetic labels, so it remains rejected.
+- The optional GenRec-inspired search path can add validated soft intent and
+  perform an ID-only rerank over at most 50 grounded candidates. Deterministic
+  parsing owns hard constraints, BM25 always receives the raw query, hard
+  filters are reapplied, personalization is added locally afterward, and
+  provider failures return the raw deterministic pre-rank. Calls are
+  process-rate-limited and only validated responses enter the bounded cache.
+  This is implemented but disabled by default, is not a Netflix GenRec
+  reproduction, and has not been exercised against a live provider because no
+  credentials were used. `scripts/evaluate_llm_search.py` freezes variant
+  rankings separately from shuffled, image-visible human judging sheets; no
+  human result is claimed yet.
 
 ## Rejected ideas (already decided, not rerun)
 
@@ -264,8 +278,30 @@ LightGBM `lr03_n500` remains the strongest gradient-boosted baseline and the
 control for later stages.
 
 Keep search as a separate query-first hybrid. Do not reuse the purchase
-LambdaRank as a search ranker. Do not add GenRec, DCN, or image retrieval
-without a new measured failure.
+LambdaRank as a search ranker. The bounded GenRec-inspired provider path is a
+search-only opt-in experiment, not a purchase-ranking replacement. Do not add
+DCN or reopen rejected recommendation retrieval branches without a new
+measured failure.
+
+## Live recommendation serving verification
+
+The exported serving bundle contains the frozen CatBoost `BEST_SYSTEM`, a
+105,542-article index, and 2,678,481 candidate rows across 2,000 supported
+customers (643 minimum, 1,339.2405 mean, 2,010 maximum). There are exactly
+2,000 compressed per-customer feature files, all with the expected 41
+features. The 63.43 MiB bundle's model SHA-256 is
+`2f423b5c9fd797ad8178bbe818a4951b40d3331ceb0400fec9f0714d317c3408`
+and matches the manifest.
+
+Live inference reproduced the precomputed article IDs, order, candidate
+counts, and float scores exactly for all five demo customers. The server loads
+and caches the model, article index, and requested customer features lazily; it
+does not train or generate candidates per request. In-process API verification
+measured 482.8 ms end-to-end on the first supported-customer request and 1.7
+ms on a repeated request. The response-local ranker-path measurements were
+25.2 ms and 0.6 ms respectively; the first end-to-end request also loaded the
+catalog. If the live bundle is absent or invalid, only the five demo customers
+fall back to their precomputed Top-12 slates.
 
 ## What would change with real H&M production data
 

@@ -77,6 +77,25 @@ optional. Because the H&M dataset contains no real search-query/click logs,
 search relevance is evaluated using synthetic, structured, and small manual
 benchmarks rather than production search behavior.
 
+The optional LLM path is **GenRec-inspired**, not a reproduction of Netflix
+GenRec. This repository lacks the query/search interaction labels and serving
+infrastructure needed to post-train and serve a decoder model with catalog-item
+scoring. Instead, the LLM may add validated soft intent and reorder only a
+bounded catalog candidate set. Deterministic parsing owns explicit color,
+product-type, and section interpretation. Color is a hard filter only when a
+recognized product type is also present; color-only queries remain soft. BM25
+always receives the raw query; returned IDs are validated; hard filters are
+reapplied; and failures fall back to the existing deterministic pre-rank.
+Customer history and personalization-influenced candidate order are not sent
+to the LLM.
+
+The provider path is implemented but opt-in. It is disabled when
+`SEARCH_LLM=0` or credentials are absent. Live provider behavior has not been
+verified because no credentials were used for this workstream; only the
+deterministic fallback was exercised. The evaluation harness freezes each
+variant's rankings before producing shuffled, image-visible judging sheets, so
+future human judgments can remain blind to which system returned each item.
+
 ## First prediction task
 
 Given everything known about a customer before a cutoff, rank 12 articles that the customer is likely to purchase during the next seven days.
@@ -622,7 +641,7 @@ python scripts/export_demo_customers.py
 # python scripts/export_demo_recommendations.py
 # One-time local CLIP artifact build:
 # python scripts/encode_visual_search_images.py 64
-SEARCH_SEMANTIC=0 SEARCH_VISUAL=1 uvicorn services.recommender.app:app --reload --port 8000
+SEARCH_SEMANTIC=0 SEARCH_VISUAL=1 SEARCH_LLM=0 uvicorn services.recommender.app:app --reload --port 8000
 ```
 
 In another shell:
@@ -645,17 +664,36 @@ docker compose up --build
 The API image serves FastAPI. The web image is a production Next.js build.
 Mount local `artifacts/`, `articles.csv`, and optional `images/` into the API
 container. Set `SEARCH_SEMANTIC=0` to skip MiniLM. Set `SEARCH_VISUAL=1` only
-when `artifacts/visual_search/` contains the encoded CLIP matrix.
+when `artifacts/visual_search/` contains the encoded CLIP matrix. LLM search is
+off by default. To opt in, set `SEARCH_LLM=1` and configure the
+OpenAI-compatible settings shown in `env.example`; `GROQ_API_KEY` is accepted
+as a fallback credential and secrets must remain outside Git. External calls
+are bounded per process by `SEARCH_LLM_MAX_CALLS_PER_MINUTE` (default `30`);
+quota exhaustion uses deterministic fallback.
 
-The recommendation endpoint reads precomputed `BEST_SYSTEM` Top-12 slates for
-five real demo customers from `artifacts/overnight/demo_recommendations.json`.
-It does not run CatBoost during an API request. The search engine builds its
-in-memory BM25 and structured indexes lazily on the first search request and
-then reuses them. When `SEARCH_SEMANTIC=1`, the same lazy initialization also
+The recommendation endpoint prefers live CatBoost inference from the exported
+`artifacts/serving/` bundle. The current bundle contains the frozen
+`BEST_SYSTEM` model and 2,678,481 candidate-feature rows for 2,000 customers at
+the 2020-09-15 serving cutoff. The process loads and caches the model and
+article index lazily, and loads each customer's compressed feature block on
+demand into a 128-customer cache. Each request scores the already-exported
+candidate rows; it does not regenerate candidates, retrain, or refit CatBoost.
+If the live bundle is absent or invalid, the five curated demo customers fall
+back to precomputed Top-12 slates in
+`artifacts/overnight/demo_recommendations.json`; other unsupported IDs return
+404.
+
+In-process verification on 2026-09-09 measured 482.8 ms end-to-end for the
+first recommendation request and 1.7 ms for a repeated request for the same
+customer. The response's ranker-path measurement was 25.2 ms cold and 0.6 ms
+warm; the larger first end-to-end number includes initial catalog loading.
+The search engine builds its in-memory BM25 and structured indexes lazily on
+the first search request and then reuses them. When `SEARCH_SEMANTIC=1`, the same lazy initialization also
 loads the MiniLM query encoder and frozen article-text embeddings. MiniLM is
-off by default because it reduced style-query NDCG@10 in the synthetic
-ablation, despite a small Recall@50 increase. With `SEARCH_VISUAL=1`, the same
-lazy initialization loads the frozen CLIP image matrix and text encoder.
+off by default because it did not improve the lexical/token-overlap synthetic
+benchmark. That benchmark is circular and favors BM25, so real semantic-search
+value remains inconclusive. With `SEARCH_VISUAL=1`, the same lazy
+initialization loads the frozen CLIP image matrix and text encoder.
 
 Raw H&M CSVs and the full image archive stay local and are not shipped as Git
 artifacts. The public demo should use a precomputed demo-customer subset plus
@@ -668,3 +706,60 @@ python scripts/audit_evaluation_integrity.py
 python scripts/run_overnight_baseline.py
 python scripts/analyze_ranking_failures.py
 ```
+
+## Vercel frontend and EC2 backend lab
+
+This is a low-traffic portfolio/interview stack. The browser talks to Next.js
+on Vercel and to `https://api.<your-domain>` on one EC2 VM. Caddy owns ports
+80/443. Recommendation and search run as separate Compose services; search
+falls back to unpersonalized results if recommendation is slow or down.
+
+Do not put raw H&M transactions, `.env`, or training caches on the VM. Build
+a synthetic bundle first:
+
+```bash
+python scripts/create_interview_lab_bundle.py /tmp/recsys-loom-lab-bundle \
+  --archive /tmp/recsys-loom-lab-bundle.tar.gz
+```
+
+Branching is protected `main`, short-lived feature PRs, and hotfixes from the
+deployed commit. Frontend production is Vercel Git integration: project root
+`apps/web`, production branch `main`,
+`NEXT_PUBLIC_API_URL=https://api.<your-domain>`. Preview deployments need a
+matching CORS origin; do not allow `*`.
+
+Backend CD is GitHub Actions OIDC to AWS. After `infra/bootstrap` and
+`infra/live` are applied, set repository variables
+`AWS_REGION`, `AWS_DEPLOY_ROLE_ARN`, `ECR_RECOMMENDATION_REPOSITORY`,
+`ECR_SEARCH_REPOSITORY`, `DEPLOYMENT_CONFIG_BUCKET`, `ALLOWED_ORIGINS`,
+`BACKEND_BASE_URL`, `SSM_INSTANCE_ID`, plus the serving-bundle URI/version.
+Protect `main` and require the `production` environment on
+`.github/workflows/deploy-backend.yml`.
+
+Terraform apply order:
+
+```bash
+cd infra/bootstrap
+# copy terraform.tfvars.example, then:
+terraform init
+terraform apply
+
+cd ../live
+# copy backend.hcl.example, tenant.tfvars.example, environment.tfvars.example
+terraform init -backend-config=backend.hcl
+terraform plan -var-file=tenant.tfvars -var-file=environment.tfvars
+terraform apply -var-file=tenant.tfvars -var-file=environment.tfvars
+```
+
+SSH interview drills stay on a disposable tenant with
+`enable_lab_fault_volume = true` and a candidate `/32` SSH CIDR. On the VM:
+
+```bash
+LAB_MODE=1 LAB_CONFIRM=SYNTHETIC_ONLY /opt/recsys-loom/app/lab/enable.sh
+LAB_MODE=1 /opt/recsys-loom/app/lab/service-stop.sh search-api
+LAB_MODE=1 /opt/recsys-loom/app/lab/cleanup.sh --disable
+```
+
+Never fill `/`, change SSH/firewall, or run unbounded load. The interviewer
+rollback is `cleanup.sh` plus the previous image digest recorded by
+`ops/deploy.sh`.

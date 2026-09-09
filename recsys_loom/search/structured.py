@@ -78,6 +78,6 @@ def passes_hard_filters(article: Article, intent: ParsedIntent) -> bool:
     if "section_family" in intent.hard_constraints:
         family = section_family(article.section_name)
         required = intent.hard_constraints["section_family"]
-        if family and family != required:
+        if family != required:
             return False
     return True
