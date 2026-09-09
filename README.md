@@ -640,11 +640,16 @@ The API image serves FastAPI. The web image is a production Next.js build.
 Mount local `artifacts/`, `articles.csv`, and optional `images/` into the API
 container. Set `SEARCH_SEMANTIC=0` if the MiniLM encoder should not load.
 
-The API loads models and search indices at startup. It does not retrain ALS or
-LambdaRank per request. Raw H&M CSVs and the full image archive stay local and
-are not shipped as Git artifacts. The public demo should use a precomputed
-demo-customer subset plus catalog thumbnails, not tens of gigabytes of raw
-files.
+The recommendation endpoint reads precomputed `BEST_SYSTEM` Top-12 slates for
+five real demo customers from `artifacts/overnight/demo_recommendations.json`.
+It does not run CatBoost during an API request. The search engine builds its
+in-memory BM25 and structured indexes lazily on the first search request and
+then reuses them. When `SEARCH_SEMANTIC=1`, the same lazy initialization also
+loads the MiniLM query encoder and frozen article-text embeddings.
+
+Raw H&M CSVs and the full image archive stay local and are not shipped as Git
+artifacts. The public demo should use a precomputed demo-customer subset plus
+catalog thumbnails, not tens of gigabytes of raw files.
 
 Reproduce overnight ranking experiments from the development protocol:
 
