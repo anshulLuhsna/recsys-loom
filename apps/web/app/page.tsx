@@ -97,8 +97,9 @@ export default function HomePage() {
         <article>
           <h2>Personalized home</h2>
           <p className="lede">
-            Uses purchase history, multi-source retrieval, and LambdaRank. The
-            slate answers “what might this customer buy next week?”
+            Uses purchase history, multi-source retrieval, and CatBoost
+            YetiRank. The slate answers “what might this customer buy next
+            week?”
           </p>
         </article>
         <article>

@@ -603,10 +603,11 @@ The overnight evaluation protocol, ranking failure analysis, and current
 selection uses the 2020-08-31 and 2020-09-07 2K folds. The official final
 number is a reserved 8,000-customer holdout, not an unseen calendar week.
 
-Current development champion: six-source CatBoost YetiRank (500 iterations,
-`lr=0.03`; mean MAP@12 0.02987 vs LightGBM 0.02799 vs 300-tree baseline
-0.02707). Holdout MAP is unread until freeze. Copy `env.example` to `.env`
-if you need to change ports.
+Frozen `BEST_SYSTEM`: six-source CatBoost YetiRank (500 iterations,
+`lr=0.03`). Development mean MAP@12 0.02987 vs LightGBM 0.02799 vs 300-tree
+baseline 0.02707. Official customer-holdout MAP@12 is **0.03068** on 8,000
+unused 2020-09-16..22 buyers. That is not an unseen calendar week. Copy
+`env.example` to `.env` if you need to change ports.
 
 ```bash
 python3 -m venv .venv

@@ -17,8 +17,12 @@ Listwise aborted with signal 11 after the sanity check (OOM on five loaded
 snapshots) and is rejected. Inverse-sqrt popularity weights scored 0.02743 vs unweighted 0.02799 and
 are rejected. Group-size weights raised the mean to 0.02832 but dropped
 the Sep 7 fold from 0.02811 to 0.02691, so they are rejected as not
-fold-consistent. `BEST_SYSTEM` is frozen as six-source CatBoost YetiRank
-with no extra weighting. Holdout export is running; holdout MAP is unread.
+fold-consistent. `BEST_SYSTEM` is frozen as six-source CatBoost YetiRank with no extra
+weighting. Official customer-holdout MAP@12 on 8,000 unused 2020-09-16..22
+buyers is **0.03068** (Recall@12 0.0538, Hit Rate@12 0.1375). That is +13.3%
+relative to the development 300-tree baseline (0.02707) and slightly above
+the CatBoost development mean (0.02987). This is a reserved-customer test
+on an already-seen calendar week, not an unseen temporal window.
 
 ## Evaluation integrity
 
@@ -103,7 +107,7 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | Group-size / active-user weights | **reject**; mean +0.00033 but Sep 7 fold fell |
 | GenRec-style | not justified by failure analysis |
 | BEST_SYSTEM freeze | **frozen_for_holdout**: CatBoost YetiRank, four weeks |
-| Customer-holdout final | exporting 8K reserved customers |
+| Customer-holdout final | **0.03068 MAP@12** on 8,000 unused buyers |
 
 Official LightGBM tune, development mean MAP@12:
 
@@ -274,16 +278,93 @@ causal lift or satisfaction claim.
 
 ## Best system
 
-Frozen for holdout.
+Status: frozen_for_holdout
 
 ```text
-Popularity + Repeat + PMI + ALS + metadata content + metadata two-tower K=50
-        ↓
-CatBoost YetiRank (500 iterations, lr=0.03, depth 6)
-        ↓
-Top 12
+{
+  "candidate_sources": [
+    "recent_7d_pop",
+    "repeat_purchase",
+    "cooccurrence",
+    "als",
+    "content",
+    "two_tower"
+  ],
+  "two_tower_k": 50,
+  "ranker": {
+    "family": "catboost_yetirank",
+    "objective": "lambdarank",
+    "n_estimators": 500,
+    "learning_rate": 0.03,
+    "num_leaves": 63,
+    "min_child_samples": 50,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 5,
+    "seed": 42,
+    "two_tower_k": 50,
+    "sources": [
+      "recent_7d_pop",
+      "repeat_purchase",
+      "cooccurrence",
+      "als",
+      "content",
+      "two_tower"
+    ],
+    "params_update": {},
+    "selected_trial": "lr03_n500"
+  },
+  "reranker": null,
+  "feature_set": "six_source_lambdarank_v1",
+  "training_snapshots": [
+    "2020-08-17",
+    "2020-08-24",
+    "2020-08-31",
+    "2020-09-07"
+  ],
+  "serving_cutoff": "2020-09-15",
+  "group_weighting": null,
+  "negative_sampling": "all_candidates",
+  "label_weighting": null
+}
 ```
 
-Decisions: `lr03_n500` schedule, four training weeks, all candidates, baseline
-features, no label/group weights, no listwise reranker. Holdout MAP is unread
-until evaluation finishes.
+- Development baseline mean MAP@12: 0.027068315668018046
+- Selected LightGBM trial: lr03_n500 (0.02799008240744645)
+- Customer-holdout MAP@12: 0.030677543673145336
+- Holdout customers: 8000
+- Decisions: lightgbm:lr03_n500, supervision:current, negatives:all_candidates, features:baseline, weights:none, group_weights:none, ranker:catboost, reranker:none
+
+Holdout is a customer-holdout evaluation on 2020-09-16..22, not a pristine unseen week.
+
+## Search product
+
+- Synthetic structured holdout: {'queries_scored': 15, 'precision_at_10': 1.0, 'recall_at_50': 1.0, 'ndcg_at_10': 1.0, 'mrr': 1.0}
+- Style curated: {'queries_scored': 9, 'precision_at_10': 0.6666666666666666, 'recall_at_50': 0.7111111111111111, 'ndcg_at_10': 0.7752239300332568, 'mrr': 0.7878787878787878, 'label': 'style/token overlap on curated queries; not production search quality'}
+- Search ranker: hybrid_fusion
+
+## Git checkpoints
+
+```text
+454c534 fix: require fold-consistent lift before keeping group weights
+7afe298 fix: pass long-tail rarity as LightGBM sample weights
+aeede7a experiment: promote CatBoost YetiRank and reject the crashed listwise reranker
+4b53f0b docs: reject extra-week supervision after a 0.00010 MAP lift
+559f8f9 docs: reject explicit ranking crosses after they lost to the base features
+6ede2dc docs: reject hard-negative downsampling and record the 500-tree champion
+6a66f93 docs: record the ranking bottleneck and re-run search on customer switch
+5882671 experiment: keep the 500-tree LightGBM schedule and add group weights
+7277eb5 fix: carry the selected LightGBM trial into later overnight stages
+d1cf751 docs: record the first material LightGBM lift from a slower 500-tree schedule
+da82045 feat: auto-finalize after the research ladder and ship a production web image
+16b6f31 docs: record rejected branches and LightGBM tune outcomes so far
+bc53c24 fix: make holdout replay CatBoost/listwise and export all 8K customers
+189dd59 fix: train holdout and demo slates from the frozen BEST_SYSTEM spec
+387564c fix: stop search from showing zero results while a query is in flight
+c67d77d feat: add search demo surfaces and synthetic style eval
+81a4b7f feat: add holdout evaluation path and search benchmark helpers
+c269086 feat: add hybrid search pipeline and recommendation API shell
+cbbfe17 experiment: ranking research stages and frozen baseline protocol
+0aa49c6 checkpoint: evaluation audit and experiment harness
+c4683da checkpoint: pre-overnight recommender state
+```
