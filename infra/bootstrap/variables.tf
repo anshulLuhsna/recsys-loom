@@ -111,7 +111,7 @@ variable "github_ci_role_name" {
 variable "ecr_repository_names" {
   description = "ECR repositories created for deployable images."
   type        = set(string)
-  default     = [
+  default = [
     "recsys-loom-recommendation",
     "recsys-loom-search",
   ]

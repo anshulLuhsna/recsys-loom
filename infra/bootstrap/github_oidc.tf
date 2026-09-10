@@ -58,7 +58,7 @@ data "aws_iam_policy_document" "github_ci" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = [
+      values = [
         var.state_key_prefix,
         "${var.state_key_prefix}/*",
       ]
@@ -91,7 +91,7 @@ data "aws_iam_policy_document" "github_ci" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = [
+      values = [
         var.deployment_config_prefix,
         "${var.deployment_config_prefix}/*",
       ]
@@ -99,9 +99,9 @@ data "aws_iam_policy_document" "github_ci" {
   }
 
   statement {
-    sid       = "PublishDeploymentConfiguration"
-    effect    = "Allow"
-    actions   = ["s3:PutObject"]
+    sid     = "PublishDeploymentConfiguration"
+    effect  = "Allow"
+    actions = ["s3:PutObject"]
     resources = [
       "${aws_s3_bucket.serving_bundles.arn}/${var.deployment_config_prefix}/*",
     ]

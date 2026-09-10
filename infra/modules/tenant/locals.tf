@@ -43,7 +43,7 @@ locals {
 
   serving_bundle_prefix    = trim(var.serving_bundle_prefix, "/")
   deployment_config_prefix = trim(var.deployment_config_prefix, "/")
-  readable_s3_prefixes     = [
+  readable_s3_prefixes = [
     local.serving_bundle_prefix,
     local.deployment_config_prefix,
   ]

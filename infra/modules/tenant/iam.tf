@@ -94,7 +94,7 @@ data "aws_iam_policy_document" "runtime" {
       condition {
         test     = "StringLike"
         variable = "s3:prefix"
-        values   = flatten([
+        values = flatten([
           for prefix in local.readable_s3_prefixes : [
             prefix,
             "${prefix}/*",
@@ -108,9 +108,9 @@ data "aws_iam_policy_document" "runtime" {
     for_each = var.serving_bundle_bucket_arn != "" ? [1] : []
 
     content {
-      sid       = "ReadServingBundles"
-      effect    = "Allow"
-      actions   = ["s3:GetObject"]
+      sid     = "ReadServingBundles"
+      effect  = "Allow"
+      actions = ["s3:GetObject"]
       resources = [
         for prefix in local.readable_s3_prefixes :
         "${var.serving_bundle_bucket_arn}/${prefix}/*"
