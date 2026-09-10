@@ -29,7 +29,7 @@ QUERIES = [
     "men's blue shirt that feels polished but casual",
     "warm cream cardigan with a soft textured look",
     "kids red jacket for rainy school days",
-    "striped oversized shirt for summer",
+    "striped oversized shirt for a breezy summer holiday",
     "comfortable black trousers for work",
 ]
 OUTPUT_DIR = PROJECT_ROOT / "artifacts" / "llm_search"
@@ -39,6 +39,7 @@ REPORT_PATH = OUTPUT_DIR / "llm_search_human_eval.json"
 SHEETS_DIR = OUTPUT_DIR / "judging_sheets"
 VARIANT_NAMES = (
     "bm25_structured_clip",
+    "hybrid_minilm",
     "llm_intent_only",
     "llm_rerank_only",
     "full_llm",
@@ -57,7 +58,7 @@ def _require_configuration() -> None:
 
 def _build_variants() -> dict[str, SearchEngine]:
     full = build_search_engine(
-        load_semantic=False,
+        load_semantic=True,
         load_visual=True,
         load_llm=True,
     )
@@ -75,7 +76,17 @@ def _build_variants() -> dict[str, SearchEngine]:
         )
 
     return {
-        "bm25_structured_clip": variant(False, False),
+        "bm25_structured_clip": SearchEngine(
+            full.articles,
+            full.lexical,
+            None,
+            full.structured,
+            full.visual,
+            full.llm,
+            False,
+            False,
+        ),
+        "hybrid_minilm": variant(False, False),
         "llm_intent_only": variant(True, False),
         "llm_rerank_only": variant(False, True),
         "full_llm": variant(True, True),

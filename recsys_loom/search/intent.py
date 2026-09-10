@@ -107,11 +107,13 @@ STYLE_TERMS = {
     "printed",
     "plain",
 }
+NEGATION_TOKENS = {"avoid", "dont", "isn", "no", "not", "without"}
 
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)?")
 ARTICLE_ID_RE = re.compile(r"\b\d{6,}\b")
 MAX_SOFT_TERMS = 8
 MAX_SOFT_TEXT_LENGTH = 160
+TAXONOMY_ALIASES = set(COLOR_ALIASES) | set(TYPE_ALIASES) | set(SECTION_ALIASES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +164,63 @@ def tokenize(text: str) -> list[str]:
     return TOKEN_RE.findall(text.lower())
 
 
+def _within_one_edit(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) == len(right):
+        mismatches = [
+            index
+            for index, (left_char, right_char) in enumerate(zip(left, right))
+            if left_char != right_char
+        ]
+        return (
+            len(mismatches) == 2
+            and mismatches[1] == mismatches[0] + 1
+            and left[mismatches[0]] == right[mismatches[1]]
+            and left[mismatches[1]] == right[mismatches[0]]
+        )
+    shorter, longer = (left, right) if len(left) < len(right) else (right, left)
+    if len(shorter) < 3 or shorter[:2] != longer[:2]:
+        return False
+    short_index = 0
+    long_index = 0
+    skipped = False
+    while short_index < len(shorter) and long_index < len(longer):
+        if shorter[short_index] == longer[long_index]:
+            short_index += 1
+            long_index += 1
+            continue
+        if skipped:
+            return False
+        skipped = True
+        long_index += 1
+    return True
+
+
+def normalize_taxonomy_tokens(
+    tokens: list[str],
+) -> tuple[list[str], dict[str, str]]:
+    normalized = []
+    corrections: dict[str, str] = {}
+    for token in tokens:
+        if token in TAXONOMY_ALIASES or len(token) < 3:
+            normalized.append(token)
+            continue
+        matches = [
+            alias
+            for alias in TAXONOMY_ALIASES
+            if _within_one_edit(token, alias)
+        ]
+        if len(matches) == 1:
+            normalized.append(matches[0])
+            corrections[token] = matches[0]
+        else:
+            normalized.append(token)
+    return normalized, corrections
+
+
 def _validate_soft_text(
     value: object,
     field_name: str,
@@ -177,10 +236,7 @@ def _validate_soft_text(
     tokens = tokenize(cleaned)
     if not tokens or any(token not in allowed_tokens for token in tokens):
         raise ValueError(f"{field_name} must use the request allowlist")
-    rebuilt = " ".join(tokens)
-    if rebuilt != cleaned.lower():
-        raise ValueError(f"{field_name} contains unsupported characters")
-    return rebuilt
+    return " ".join(tokens)
 
 
 def validate_soft_intent(
@@ -232,10 +288,18 @@ def merge_soft_intent(intent: ParsedIntent, soft: SoftIntent) -> ParsedIntent:
         if term.lower() not in known_styles:
             style_terms.append(term)
             known_styles.add(term.lower())
-    enriched_parts = [intent.raw_query]
-    if soft.reformulated_query:
+    base_query = intent.semantic_query or intent.raw_query
+    enriched_parts = [base_query]
+    semantic_tokens = set(tokenize(base_query))
+    if (
+        soft.reformulated_query
+        and not set(tokenize(soft.reformulated_query)).issubset(semantic_tokens)
+    ):
         enriched_parts.append(soft.reformulated_query)
-    enriched_parts.extend(soft.style_terms)
+        semantic_tokens.update(tokenize(soft.reformulated_query))
+    enriched_parts.extend(
+        term for term in soft.style_terms if term not in semantic_tokens
+    )
     soft_preferences = dict(intent.soft_preferences)
     if soft.reformulated_query:
         soft_preferences["llm_reformulation"] = soft.reformulated_query
@@ -254,7 +318,9 @@ def merge_soft_intent(intent: ParsedIntent, soft: SoftIntent) -> ParsedIntent:
         soft_preferences=soft_preferences,
         free_text=intent.free_text,
         semantic_query=" ".join(part for part in enriched_parts if part),
-        soft_exclusions=list(soft.exclusions),
+        soft_exclusions=list(
+            dict.fromkeys([*intent.soft_exclusions, *soft.exclusions])
+        ),
     )
     if merged.hard_constraints != original_hard_constraints:
         raise RuntimeError("soft intent attempted to change deterministic constraints")
@@ -263,16 +329,41 @@ def merge_soft_intent(intent: ParsedIntent, soft: SoftIntent) -> ParsedIntent:
 
 def parse_query(query: str) -> ParsedIntent:
     tokens = tokenize(query)
-    color = next((COLOR_ALIASES[token] for token in tokens if token in COLOR_ALIASES), None)
+    normalized_tokens, corrections = normalize_taxonomy_tokens(tokens)
+    color = next(
+        (
+            COLOR_ALIASES[token]
+            for token in normalized_tokens
+            if token in COLOR_ALIASES
+        ),
+        None,
+    )
     product_type = next(
-        (TYPE_ALIASES[token] for token in tokens if token in TYPE_ALIASES),
+        (
+            TYPE_ALIASES[token]
+            for token in normalized_tokens
+            if token in TYPE_ALIASES
+        ),
         None,
     )
     section = next(
-        (SECTION_ALIASES[token] for token in tokens if token in SECTION_ALIASES),
+        (
+            SECTION_ALIASES[token]
+            for token in normalized_tokens
+            if token in SECTION_ALIASES
+        ),
         None,
     )
-    style_terms = [token for token in tokens if token in STYLE_TERMS]
+    style_terms = []
+    soft_exclusions = []
+    for index, token in enumerate(normalized_tokens):
+        if token not in STYLE_TERMS:
+            continue
+        previous_tokens = normalized_tokens[max(0, index - 3) : index]
+        if any(previous in NEGATION_TOKENS for previous in previous_tokens):
+            soft_exclusions.append(token)
+        else:
+            style_terms.append(token)
     hard: dict[str, str] = {}
     soft: dict[str, str] = {}
     if product_type:
@@ -284,6 +375,11 @@ def parse_query(query: str) -> ParsedIntent:
         hard["color"] = color
     elif color:
         soft["color"] = color
+    if corrections:
+        soft["typo_corrections"] = ", ".join(
+            f"{source} → {target}" for source, target in corrections.items()
+        )
+    normalized_query = " ".join(normalized_tokens)
     return ParsedIntent(
         raw_query=query.strip(),
         tokens=tokens,
@@ -294,5 +390,6 @@ def parse_query(query: str) -> ParsedIntent:
         hard_constraints=hard,
         soft_preferences=soft,
         free_text=query.strip(),
-        semantic_query=query.strip(),
+        semantic_query=normalized_query,
+        soft_exclusions=soft_exclusions,
     )

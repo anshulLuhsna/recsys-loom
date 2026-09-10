@@ -78,6 +78,8 @@ export async function searchCatalog(
     section?: string | null;
     style_terms?: string[];
     hard_constraints?: Record<string, string>;
+    semantic_query?: string;
+    soft_preferences?: Record<string, string>;
   };
   results: ProductCard[];
 }> {

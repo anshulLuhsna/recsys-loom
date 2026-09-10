@@ -9,6 +9,8 @@ from typing import Protocol
 from recsys_loom.search.catalog import Article
 from recsys_loom.search.intent import (
     ParsedIntent,
+    STYLE_TERMS,
+    TAXONOMY_ALIASES,
     merge_soft_intent,
     parse_query,
     tokenize,
@@ -25,6 +27,46 @@ from recsys_loom.search.structured import (
 class RetrievalIndex(Protocol):
     def search(self, query: str, k: int = 200) -> list[tuple[str, float]]:
         """Return article identifiers with source-native scores."""
+
+
+LLM_FILLER_TOKENS = {
+    "a",
+    "an",
+    "and",
+    "can",
+    "could",
+    "do",
+    "don",
+    "for",
+    "hey",
+    "i",
+    "isn",
+    "like",
+    "looking",
+    "me",
+    "need",
+    "of",
+    "or",
+    "please",
+    "show",
+    "some",
+    "something",
+    "that",
+    "the",
+    "this",
+    "t",
+    "to",
+    "too",
+    "want",
+    "would",
+    "with",
+    "you",
+}
+
+
+def needs_llm_enrichment(intent: ParsedIntent) -> bool:
+    known = TAXONOMY_ALIASES | STYLE_TERMS | LLM_FILLER_TOKENS
+    return any(token not in known for token in tokenize(intent.semantic_query))
 
 
 @dataclass(slots=True)
@@ -78,9 +120,14 @@ class SearchEngine:
         started = time.perf_counter()
         parse_started = time.perf_counter()
         deterministic_intent = parse_query(query)
+        llm_enrichment_needed = needs_llm_enrichment(deterministic_intent)
         parse_ms = (time.perf_counter() - parse_started) * 1000
         pre_rank_limit = limit
-        if self.llm is not None and self.use_llm_rerank:
+        if (
+            self.llm is not None
+            and self.use_llm_rerank
+            and llm_enrichment_needed
+        ):
             pre_rank_limit = max(limit, self.llm.config.rerank_limit)
 
         raw_retrieve_started = time.perf_counter()
@@ -112,7 +159,11 @@ class SearchEngine:
         intent = deterministic_intent
         semantic_enrichment_applied = False
         intent_diagnostics = _inactive_llm_stage("not_configured")
-        if self.llm is not None and self.use_llm_intent:
+        if (
+            self.llm is not None
+            and self.use_llm_intent
+            and llm_enrichment_needed
+        ):
             soft_intent, intent_diagnostics = self.llm.enrich_intent(
                 deterministic_intent
             )
@@ -133,6 +184,10 @@ class SearchEngine:
                 semantic_enrichment_applied = reformulation_changed or style_changed
                 if not semantic_enrichment_applied:
                     intent.semantic_query = deterministic_intent.semantic_query
+        elif self.llm is not None and self.use_llm_intent:
+            intent_diagnostics = _inactive_llm_stage(
+                "deterministic_intent_complete"
+            )
         elif self.llm is not None:
             intent_diagnostics = _inactive_llm_stage("stage_disabled")
         provider_failed = bool(
@@ -177,6 +232,7 @@ class SearchEngine:
         if (
             self.llm is not None
             and self.use_llm_rerank
+            and llm_enrichment_needed
             and not provider_failed
         ):
             reranked_ids, rerank_diagnostics = self.llm.rerank(
@@ -187,7 +243,11 @@ class SearchEngine:
             )
         elif self.llm is not None and self.use_llm_rerank:
             rerank_diagnostics = _inactive_llm_stage(
-                "prior_llm_failure",
+                (
+                    "prior_llm_failure"
+                    if provider_failed
+                    else "deterministic_intent_complete"
+                ),
                 candidate_count=min(
                     len(pre_ranked),
                     self.llm.config.rerank_limit,
@@ -228,6 +288,7 @@ class SearchEngine:
                 fallback = "deterministic_raw_query_pre_rank"
             elif (
                 self.use_llm_rerank
+                and llm_enrichment_needed
                 and not rerank_diagnostics["applied"]
             ):
                 fallback = "raw_query_pre_rank_after_llm_rerank_failure"
@@ -275,7 +336,12 @@ class SearchEngine:
                     "semantic_visual": (
                         "llm_enriched"
                         if semantic_enrichment_applied
-                        else "raw_query"
+                        else (
+                            "deterministic_normalized"
+                            if deterministic_intent.semantic_query.lower()
+                            != query.strip().lower()
+                            else "raw_query"
+                        )
                     ),
                 },
                 "hard_constraints_source": "deterministic_parser",

@@ -24,6 +24,7 @@ export default function SearchPage() {
   const [customerId, setCustomerId] = useState("");
   const [items, setItems] = useState<Product[]>([]);
   const [chips, setChips] = useState<string[]>([]);
+  const [interpretedQuery, setInterpretedQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [colorFilter, setColorFilter] = useState("");
   const [sectionFilter, setSectionFilter] = useState("");
@@ -85,6 +86,12 @@ export default function SearchPage() {
       );
       setItems(payload.results ?? []);
       const intent = payload.parsed_intent ?? {};
+      const semanticQuery = intent.semantic_query?.trim() ?? "";
+      setInterpretedQuery(
+        semanticQuery.toLowerCase() === nextQuery.trim().toLowerCase()
+          ? ""
+          : semanticQuery,
+      );
       setChips(
         [
           intent.color,
@@ -96,6 +103,7 @@ export default function SearchPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
       setItems([]);
+      setInterpretedQuery("");
     } finally {
       setLoading(false);
     }
@@ -168,6 +176,11 @@ export default function SearchPage() {
         />
         <button type="submit">Search</button>
       </form>
+      {interpretedQuery ? (
+        <p>
+          Interpreted as: <strong>{interpretedQuery}</strong>
+        </p>
+      ) : null}
       {chips.length ? (
         <div className="chips">
           {chips.map((chip) => (

@@ -102,14 +102,19 @@ def load_articles(path: Path | None = None) -> dict[str, Article]:
 
 def section_family(section_name: str) -> str:
     lowered = section_name.lower()
-    if "men" in lowered and "women" not in lowered:
-        return "Menswear"
-    if "ladies" in lowered or "women" in lowered or "girl" in lowered:
-        return "Womenswear"
     if "baby" in lowered:
         return "Baby"
-    if "kid" in lowered or "boy" in lowered or "children" in lowered:
+    if (
+        "kid" in lowered
+        or "boy" in lowered
+        or "girl" in lowered
+        or "children" in lowered
+    ):
         return "Kids"
+    if "men" in lowered and "women" not in lowered:
+        return "Menswear"
+    if "ladies" in lowered or "women" in lowered:
+        return "Womenswear"
     if "divided" in lowered:
         return "Divided"
     return ""

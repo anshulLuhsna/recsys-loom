@@ -106,7 +106,7 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | Long-tail weights | **reject**; 0.02743 vs unweighted 0.02799 |
 | Group-size / active-user weights | **reject**; mean +0.00033 but Sep 7 fold fell |
 | GenRec-inspired purchase reranker | not justified by recommendation failure analysis |
-| GenRec-inspired catalog search | opt-in provider path implemented; live provider evaluation pending |
+| GenRec-inspired catalog search | live provider path verified; blinded five-variant human judgments pending |
 | BEST_SYSTEM freeze | **frozen_for_holdout**: CatBoost YetiRank, four weeks |
 | Customer-holdout final | **0.03068 MAP@12** on 8,000 unused buyers |
 
@@ -208,11 +208,14 @@ Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`
   filters are reapplied, personalization is added locally afterward, and
   provider failures return the raw deterministic pre-rank. Calls are
   process-rate-limited and only validated responses enter the bounded cache.
-  This is implemented but disabled by default, is not a Netflix GenRec
-  reproduction, and has not been exercised against a live provider because no
-  credentials were used. `scripts/evaluate_llm_search.py` freezes variant
-  rankings separately from shuffled, image-visible human judging sheets; no
-  human result is claimed yet.
+  This is implemented but disabled by default and is not a Netflix GenRec
+  reproduction. Live checks use Groq `openai/gpt-oss-120b`, strict JSON-schema
+  responses, a 15-candidate rerank bound, and a 10-second timeout with one
+  retry. Explicit grounded queries skip the LLM; open-ended queries use intent
+  enrichment and bounded reranking. `scripts/evaluate_llm_search.py` has frozen
+  eight queries across BM25+structured+CLIP, the MiniLM hybrid, intent-only,
+  rerank-only, and full-LLM variants into shuffled image-visible judging
+  sheets. Human judgments are still required, so no relevance gain is claimed.
 
 ## Rejected ideas (already decided, not rerun)
 
@@ -386,6 +389,7 @@ Holdout is a customer-holdout evaluation on 2020-09-16..22, not a pristine unsee
 - Synthetic structured holdout: {'queries_scored': 15, 'precision_at_10': 1.0, 'recall_at_50': 1.0, 'ndcg_at_10': 1.0, 'mrr': 1.0}
 - Style curated: {'queries_scored': 9, 'precision_at_10': 0.6666666666666666, 'recall_at_50': 0.7111111111111111, 'ndcg_at_10': 0.7752239300332568, 'mrr': 0.7878787878787878, 'label': 'style/token overlap on curated queries; not production search quality'}
 - Search ranker: hybrid_fusion
+- Live LLM behavior: strict catalog grounding and fallbacks verified with Groq `openai/gpt-oss-120b`; human relevance result pending
 
 ## Git checkpoints
 

@@ -90,11 +90,17 @@ Customer history and personalization-influenced candidate order are not sent
 to the LLM.
 
 The provider path is implemented but opt-in. It is disabled when
-`SEARCH_LLM=0` or credentials are absent. Live provider behavior has not been
-verified because no credentials were used for this workstream; only the
-deterministic fallback was exercised. The evaluation harness freezes each
-variant's rankings before producing shuffled, image-visible judging sheets, so
-future human judgments can remain blind to which system returned each item.
+`SEARCH_LLM=0` or credentials are absent. Live local checks with Groq's
+`openai/gpt-oss-120b` verified the intended routing: a typo-heavy explicit query
+(`i want blu women dres`) is grounded as blue womenswear dresses and uses
+MiniLM/CLIP retrieval without paying for an LLM call; an open-ended query
+(`something breezy and elegant for a beach dinner`) uses LLM intent enrichment
+and bounded candidate reranking, with no invalid IDs or hard-filter violations.
+Exact catalog wording remains eligible for BM25-first retrieval. These are
+behavior checks, not a relevance-quality benchmark. The evaluation harness
+freezes each variant's rankings before producing shuffled, image-visible
+judging sheets, so future human judgments can remain blind to which system
+returned each item.
 
 ## First prediction task
 
@@ -123,9 +129,9 @@ Each stage should answer one question before the next one begins:
 8. **Richer item representations:** Do image or text semantics improve retrieval?
    **Image-only retrieval and text-augmented two-tower tested; neither retained.**
    Joint text-image retrieval remains deferred.
-9. **Learned ranking:** Can the available signals be combined better than fixed rules? **Overnight program in progress.** See [`OVERNIGHT_RESULTS.md`](OVERNIGHT_RESULTS.md).
-10. **LLM layer:** Does language understanding add measurable value beyond embeddings and conventional rankers?
-11. **Constrained reranking:** Can relevance survive diversity, availability, freshness, and latency requirements?
+9. **Learned ranking:** Can the available signals be combined better than fixed rules? **Done: CatBoost YetiRank retained.** See [`OVERNIGHT_RESULTS.md`](OVERNIGHT_RESULTS.md).
+10. **LLM layer:** Does language understanding add measurable value beyond embeddings and conventional rankers? **Live path verified; blinded human relevance judgments pending.**
+11. **Constrained reranking:** Can relevance survive diversity, availability, freshness, and latency requirements? *Deferred: the dataset has no inventory or freshness truth.*
 
 Only one meaningful variable should change between adjacent experiments whenever possible.
 

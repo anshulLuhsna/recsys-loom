@@ -21,9 +21,9 @@ from recsys_loom.search.intent import (
 )
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
-DEFAULT_TIMEOUT_SECONDS = 4.0
-DEFAULT_RERANK_LIMIT = 30
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+DEFAULT_TIMEOUT_SECONDS = 10.0
+DEFAULT_RERANK_LIMIT = 15
 MAX_RERANK_LIMIT = 50
 DEFAULT_MAX_CALLS_PER_MINUTE = 30
 MAX_CALLS_PER_MINUTE = 600
@@ -221,7 +221,10 @@ class CatalogSearchLLM:
         )
         allowed_soft_tokens = set(allowed_terms)
         prompt = (
-            "You add only soft catalog-search intent. Deterministic constraints are "
+            "You add only clearly supported soft catalog-search intent. "
+            "Do not fill fields merely because values appear in the allowlist. "
+            "If the query already expresses only a clear color, product type, or "
+            "section, return null and empty arrays. Deterministic constraints are "
             f"locked and cannot be changed: {json.dumps(intent.hard_constraints)}. "
             f"Raw query: {json.dumps(intent.raw_query)}. "
             "Do not emit article IDs, customer history, colors, product types, or "
@@ -256,8 +259,13 @@ class CatalogSearchLLM:
             return None, self._failed_stage(started, "timeout")
         except ProviderRateLimitExceeded:
             return None, self._failed_stage(started, "rate_limited")
+        except httpx.HTTPStatusError as error:
+            return None, self._failed_stage(
+                started,
+                self._http_failure_reason(error),
+            )
         except httpx.HTTPError:
-            return None, self._failed_stage(started, "provider_error")
+            return None, self._failed_stage(started, "provider_connection_error")
         except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             return None, self._failed_stage(started, "invalid_response")
         return soft_intent, {
@@ -358,10 +366,16 @@ class CatalogSearchLLM:
                 "rate_limited",
                 candidate_count=len(bounded_ids),
             )
+        except httpx.HTTPStatusError as error:
+            return None, self._failed_stage(
+                started,
+                self._http_failure_reason(error),
+                candidate_count=len(bounded_ids),
+            )
         except httpx.HTTPError:
             return None, self._failed_stage(
                 started,
-                "provider_error",
+                "provider_connection_error",
                 candidate_count=len(bounded_ids),
             )
         except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError):
@@ -400,25 +414,44 @@ class CatalogSearchLLM:
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0,
+            "response_format": self._response_format(stage),
         }
         cache_key = f"{stage}:{json.dumps(request_payload, sort_keys=True)}"
         cached = self.cache.get(cache_key)
         if cached is not None:
             return cached, True
-        if not PROCESS_CALL_RATE_LIMITER.acquire(
-            self.config.max_calls_per_minute
-        ):
-            raise ProviderRateLimitExceeded
-        response = self._post(
-            f"{self.config.base_url.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-            },
-            json=request_payload,
-            timeout=self.config.timeout_seconds,
-        )
-        response.raise_for_status()
+        response = None
+        for attempt in range(2):
+            if not PROCESS_CALL_RATE_LIMITER.acquire(
+                self.config.max_calls_per_minute
+            ):
+                raise ProviderRateLimitExceeded
+            try:
+                response = self._post(
+                    f"{self.config.base_url.rstrip('/')}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.config.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=request_payload,
+                    timeout=self.config.timeout_seconds,
+                )
+            except (httpx.TimeoutException, httpx.NetworkError):
+                if attempt == 0:
+                    time.sleep(0.25)
+                    continue
+                raise
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                status = error.response.status_code
+                if attempt == 0 and (status in {400, 429} or status >= 500):
+                    time.sleep(0.25)
+                    continue
+                raise
+            break
+        if response is None:
+            raise RuntimeError("provider request was not attempted")
         envelope = response.json()
         content = envelope["choices"][0]["message"]["content"]
         if not isinstance(content, str):
@@ -429,6 +462,58 @@ class CatalogSearchLLM:
         validated = validator(parsed)
         self.cache.put(cache_key, validated)
         return validated, False
+
+    def _response_format(self, stage: str) -> dict[str, object]:
+        if stage == "intent":
+            properties: dict[str, object] = {
+                "reformulated_query": {
+                    "type": ["string", "null"],
+                },
+                "style_terms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 8,
+                },
+                "exclusions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 8,
+                },
+            }
+            required = ["reformulated_query", "style_terms", "exclusions"]
+        elif stage == "rerank":
+            properties = {
+                "article_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": self.config.rerank_limit,
+                }
+            }
+            required = ["article_ids"]
+        else:
+            raise ValueError(f"unsupported LLM stage: {stage}")
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": f"catalog_search_{stage}",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+    @staticmethod
+    def _http_failure_reason(error: httpx.HTTPStatusError) -> str:
+        status = error.response.status_code
+        if status == 429:
+            return "provider_rate_limited"
+        if status >= 500:
+            return "provider_unavailable"
+        return "provider_request_rejected"
 
     def _unavailable_stage(self, candidate_count: int | None = None) -> dict[str, object]:
         reason = "disabled" if not self.config.enabled else "missing_configuration"
