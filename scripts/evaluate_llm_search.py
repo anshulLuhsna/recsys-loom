@@ -395,17 +395,23 @@ def evaluate() -> None:
         load_llm=False,
     ).articles
     per_variant: dict[str, list[float]] = {name: [] for name in VARIANT_NAMES}
+    per_query: dict[str, dict[str, float]] = {}
     hard_filter_violations = {name: 0 for name in VARIANT_NAMES}
     for query in QUERIES:
         intent = parse_query(query)
+        per_query[query] = {}
         for name in VARIANT_NAMES:
             article_ids = validated_rankings[query][name]
-            per_variant[name].append(_ndcg(article_ids, judgments[query]))
+            score = _ndcg(article_ids, judgments[query])
+            per_variant[name].append(score)
+            per_query[query][name] = score
             hard_filter_violations[name] += sum(
                 article_id not in articles
                 or not passes_hard_filters(articles[article_id], intent)
                 for article_id in article_ids
             )
+    baseline_scores = per_variant["bm25_structured_clip"]
+    hybrid_scores = per_variant["hybrid_minilm"]
     report = {
         "label": "human-judged GenRec-inspired search comparison",
         "not": "Netflix GenRec reproduction, LLM judging, or production relevance",
@@ -413,10 +419,55 @@ def evaluate() -> None:
         "variants": {
             name: {
                 "mean_ndcg_at_10": sum(scores) / len(scores) if scores else 0.0,
+                "delta_vs_bm25_structured_clip": (
+                    (sum(scores) - sum(baseline_scores)) / len(scores)
+                    if scores
+                    else 0.0
+                ),
+                "wins_ties_losses_vs_baseline": {
+                    "wins": sum(
+                        score > baseline + 1e-12
+                        for score, baseline in zip(scores, baseline_scores)
+                    ),
+                    "ties": sum(
+                        abs(score - baseline) <= 1e-12
+                        for score, baseline in zip(scores, baseline_scores)
+                    ),
+                    "losses": sum(
+                        score < baseline - 1e-12
+                        for score, baseline in zip(scores, baseline_scores)
+                    ),
+                },
+                "delta_vs_hybrid_minilm": (
+                    (sum(scores) - sum(hybrid_scores)) / len(scores)
+                    if scores
+                    else 0.0
+                ),
+                "wins_ties_losses_vs_hybrid_minilm": {
+                    "wins": sum(
+                        score > hybrid + 1e-12
+                        for score, hybrid in zip(scores, hybrid_scores)
+                    ),
+                    "ties": sum(
+                        abs(score - hybrid) <= 1e-12
+                        for score, hybrid in zip(scores, hybrid_scores)
+                    ),
+                    "losses": sum(
+                        score < hybrid - 1e-12
+                        for score, hybrid in zip(scores, hybrid_scores)
+                    ),
+                },
                 "hard_filter_violations": hard_filter_violations[name],
             }
             for name, scores in per_variant.items()
         },
+        "queries": [
+            {
+                "query": query,
+                "ndcg_at_10": per_query[query],
+            }
+            for query in QUERIES
+        ],
     }
     REPORT_PATH.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report, indent=2))

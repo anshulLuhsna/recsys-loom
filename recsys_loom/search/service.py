@@ -15,7 +15,7 @@ def build_search_engine(
     load_semantic: bool = False,
     load_visual: bool = False,
     load_llm: bool = False,
-    use_llm_intent: bool = True,
+    use_llm_intent: bool = False,
     use_llm_rerank: bool = True,
 ) -> SearchEngine:
     articles = load_articles()

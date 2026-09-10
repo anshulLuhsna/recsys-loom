@@ -94,13 +94,17 @@ The provider path is implemented but opt-in. It is disabled when
 `openai/gpt-oss-120b` verified the intended routing: a typo-heavy explicit query
 (`i want blu women dres`) is grounded as blue womenswear dresses and uses
 MiniLM/CLIP retrieval without paying for an LLM call; an open-ended query
-(`something breezy and elegant for a beach dinner`) uses LLM intent enrichment
-and bounded candidate reranking, with no invalid IDs or hard-filter violations.
-Exact catalog wording remains eligible for BM25-first retrieval. These are
-behavior checks, not a relevance-quality benchmark. The evaluation harness
-freezes each variant's rankings before producing shuffled, image-visible
-judging sheets, so future human judgments can remain blind to which system
-returned each item.
+(`something breezy and elegant for a beach dinner`) uses bounded candidate
+reranking, with no invalid IDs or hard-filter violations. Exact catalog wording
+remains eligible for BM25-first retrieval.
+
+One blinded human rater scored eight natural-language queries. BM25, structured
+metadata, and CLIP scored 0.7389 mean NDCG@10; adding MiniLM scored 0.7274; MiniLM plus LLM
+reranking scored 0.7527; and the full intent-enrichment plus reranking path
+scored 0.7115. Reranking beat the MiniLM hybrid on five queries, tied one, and
+lost two. For v1, LLM intent enrichment is disabled and bounded reranking is
+retained as an opt-in path. This small single-rater evaluation is directional,
+not production search evidence.
 
 ## First prediction task
 
@@ -130,7 +134,7 @@ Each stage should answer one question before the next one begins:
    **Image-only retrieval and text-augmented two-tower tested; neither retained.**
    Joint text-image retrieval remains deferred.
 9. **Learned ranking:** Can the available signals be combined better than fixed rules? **Done: CatBoost YetiRank retained.** See [`OVERNIGHT_RESULTS.md`](OVERNIGHT_RESULTS.md).
-10. **LLM layer:** Does language understanding add measurable value beyond embeddings and conventional rankers? **Live path verified; blinded human relevance judgments pending.**
+10. **LLM layer:** Does language understanding add measurable value beyond embeddings and conventional rankers? **Done for v1: intent enrichment disabled; bounded reranking retained provisionally.**
 11. **Constrained reranking:** Can relevance survive diversity, availability, freshness, and latency requirements? *Deferred: the dataset has no inventory or freshness truth.*
 
 Only one meaningful variable should change between adjacent experiments whenever possible.

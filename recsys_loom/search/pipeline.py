@@ -99,7 +99,7 @@ class SearchEngine:
         structured: StructuredIndex,
         visual: RetrievalIndex | None = None,
         llm: CatalogSearchLLM | None = None,
-        use_llm_intent: bool = True,
+        use_llm_intent: bool = False,
         use_llm_rerank: bool = True,
     ):
         self.articles = articles

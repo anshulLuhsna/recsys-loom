@@ -106,7 +106,7 @@ LambdaRank already does the easy job: repeats and multi-source popular items. It
 | Long-tail weights | **reject**; 0.02743 vs unweighted 0.02799 |
 | Group-size / active-user weights | **reject**; mean +0.00033 but Sep 7 fold fell |
 | GenRec-inspired purchase reranker | not justified by recommendation failure analysis |
-| GenRec-inspired catalog search | live provider path verified; blinded five-variant human judgments pending |
+| GenRec-inspired catalog search | **keep rerank only**; 0.7527 NDCG@10 vs 0.7389 non-MiniLM baseline; disable intent enrichment |
 | BEST_SYSTEM freeze | **frozen_for_holdout**: CatBoost YetiRank, four weeks |
 | Customer-holdout final | **0.03068 MAP@12** on 8,000 unused buyers |
 
@@ -203,7 +203,7 @@ Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`
 - Weakly supervised search LambdaRank tied the simpler hybrid at NDCG@10 0.917
   on its synthetic labels, so it remains rejected.
 - The optional GenRec-inspired search path can add validated soft intent and
-  perform an ID-only rerank over at most 50 grounded candidates. Deterministic
+  perform an ID-only rerank over at most 15 grounded candidates. Deterministic
   parsing owns hard constraints, BM25 always receives the raw query, hard
   filters are reapplied, personalization is added locally afterward, and
   provider failures return the raw deterministic pre-rank. Calls are
@@ -211,11 +211,15 @@ Lexical + structured synthetic eval (`scripts/evaluate_search.py --lexical-only`
   This is implemented but disabled by default and is not a Netflix GenRec
   reproduction. Live checks use Groq `openai/gpt-oss-120b`, strict JSON-schema
   responses, a 15-candidate rerank bound, and a 10-second timeout with one
-  retry. Explicit grounded queries skip the LLM; open-ended queries use intent
-  enrichment and bounded reranking. `scripts/evaluate_llm_search.py` has frozen
+  retry. Explicit grounded queries skip the LLM. One blinded human rater scored
   eight queries across BM25+structured+CLIP, the MiniLM hybrid, intent-only,
-  rerank-only, and full-LLM variants into shuffled image-visible judging
-  sheets. Human judgments are still required, so no relevance gain is claimed.
+  rerank-only, and full-LLM variants. Mean NDCG@10 was 0.7389 / 0.7274 /
+  0.7274 / 0.7527 / 0.7115 respectively, with zero hard-filter violations.
+  Reranking beat the MiniLM hybrid on five queries, tied one, and lost two.
+  Intent-only produced the same rankings as MiniLM, while intent enrichment
+  before reranking lowered the mean. Disable intent enrichment for v1 and keep
+  bounded reranking as an opt-in, provisional result; eight queries and one
+  rater do not establish production search quality.
 
 ## Rejected ideas (already decided, not rerun)
 
@@ -389,7 +393,7 @@ Holdout is a customer-holdout evaluation on 2020-09-16..22, not a pristine unsee
 - Synthetic structured holdout: {'queries_scored': 15, 'precision_at_10': 1.0, 'recall_at_50': 1.0, 'ndcg_at_10': 1.0, 'mrr': 1.0}
 - Style curated: {'queries_scored': 9, 'precision_at_10': 0.6666666666666666, 'recall_at_50': 0.7111111111111111, 'ndcg_at_10': 0.7752239300332568, 'mrr': 0.7878787878787878, 'label': 'style/token overlap on curated queries; not production search quality'}
 - Search ranker: hybrid_fusion
-- Live LLM behavior: strict catalog grounding and fallbacks verified with Groq `openai/gpt-oss-120b`; human relevance result pending
+- Live LLM behavior: rerank-only 0.7527 NDCG@10 vs 0.7389 BM25+structured+CLIP and 0.7274 MiniLM hybrid; full intent+rerank 0.7115; zero hard-filter violations; eight queries, one blinded rater
 
 ## Git checkpoints
 
