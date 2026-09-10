@@ -26,3 +26,8 @@ apps/web/out/
 crash.log
 release/
 logs/
+
+# Local Terraform configuration
+*.tfvars
+*.tfvars.json
+backend.hcl
