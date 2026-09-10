@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import hashlib
+from html import escape
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
 from pathlib import Path
 import sys
+from urllib.parse import parse_qs, urlparse
 
 from PIL import Image, ImageDraw, ImageOps
 
@@ -44,6 +47,8 @@ VARIANT_NAMES = (
     "llm_rerank_only",
     "full_llm",
 )
+RATING_HOST = "127.0.0.1"
+RATING_PORT = 8765
 
 
 def _require_configuration() -> None:
@@ -417,10 +422,179 @@ def evaluate() -> None:
     print(json.dumps(report, indent=2))
 
 
+class RatingHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/":
+            raw_index = parse_qs(parsed.query).get("query", ["1"])[0]
+            try:
+                query_index = int(raw_index)
+            except ValueError:
+                self.send_error(400, "query must be an integer")
+                return
+            self._serve_rating_page(query_index)
+            return
+        if parsed.path.startswith("/sheet/") and parsed.path.endswith(".jpg"):
+            raw_index = parsed.path.removeprefix("/sheet/").removesuffix(".jpg")
+            try:
+                query_index = int(raw_index)
+            except ValueError:
+                self.send_error(400, "invalid sheet")
+                return
+            sheet_path = SHEETS_DIR / f"query_{query_index:02d}.jpg"
+            if not sheet_path.exists():
+                self.send_error(404, "sheet not found")
+                return
+            body = sheet_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_error(404)
+
+    def do_POST(self) -> None:
+        if urlparse(self.path).path != "/save":
+            self.send_error(404)
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self.send_error(400, "invalid content length")
+            return
+        if content_length <= 0 or content_length > 1_000_000:
+            self.send_error(400, "invalid form size")
+            return
+        fields = parse_qs(
+            self.rfile.read(content_length).decode("utf-8"),
+            keep_blank_values=True,
+        )
+        try:
+            query_index = int(fields["query_index"][0])
+            payload = json.loads(JUDGMENTS_PATH.read_text(encoding="utf-8"))
+            query_rows = payload["queries"]
+            query_row = query_rows[query_index - 1]
+            for candidate in query_row["candidates"]:
+                field_name = f"rating_{candidate['candidate_code']}"
+                value = int(fields[field_name][0])
+                if not 0 <= value <= 3:
+                    raise ValueError("rating outside 0..3")
+                candidate["relevance"] = value
+        except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            self.send_error(400, "every candidate requires a rating from 0 to 3")
+            return
+        JUDGMENTS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        next_index = min(query_index + 1, len(query_rows))
+        self.send_response(303)
+        self.send_header("Location", f"/?query={next_index}")
+        self.end_headers()
+
+    def _serve_rating_page(self, query_index: int) -> None:
+        if not JUDGMENTS_PATH.exists():
+            self.send_error(404, "prepare the blinded evaluation first")
+            return
+        try:
+            payload = json.loads(JUDGMENTS_PATH.read_text(encoding="utf-8"))
+            query_rows = payload["queries"]
+            if not 1 <= query_index <= len(query_rows):
+                raise IndexError
+            query_row = query_rows[query_index - 1]
+        except (IndexError, KeyError, TypeError, json.JSONDecodeError):
+            self.send_error(400, "invalid judgments file")
+            return
+        completed = sum(
+            all(candidate["relevance"] is not None for candidate in row["candidates"])
+            for row in query_rows
+        )
+        rating_rows = []
+        for candidate in query_row["candidates"]:
+            code = escape(str(candidate["candidate_code"]))
+            current = candidate["relevance"]
+            options = "".join(
+                (
+                    f'<label><input type="radio" name="rating_{code}" '
+                    f'value="{value}" required'
+                    f'{" checked" if current == value else ""}>{value}</label>'
+                )
+                for value in range(4)
+            )
+            rating_rows.append(
+                f'<div class="rating"><strong>{code}</strong><span>{options}</span></div>'
+            )
+        links = " ".join(
+            (
+                f'<a href="/?query={index}">{index}</a>'
+                if index != query_index
+                else f"<strong>{index}</strong>"
+            )
+            for index in range(1, len(query_rows) + 1)
+        )
+        body = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind search relevance ratings</title>
+<style>
+body {{ font-family: system-ui, sans-serif; margin: 24px auto; max-width: 1120px; color: #171717; background: #f8f7f3; }}
+header {{ display: flex; justify-content: space-between; gap: 24px; align-items: end; }}
+.muted {{ color: #666; }}
+.sheet {{ width: 100%; height: auto; border: 1px solid #ddd; margin: 20px 0; }}
+.ratings {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }}
+.rating {{ border: 1px solid #ddd; padding: 10px; display: flex; justify-content: space-between; gap: 8px; background: #fff; }}
+.rating label {{ margin-left: 8px; }}
+button {{ margin: 20px 0; padding: 12px 18px; font-weight: 700; }}
+nav a, nav strong {{ margin-right: 10px; }}
+@media (max-width: 800px) {{ .ratings {{ grid-template-columns: 1fr; }} }}
+</style>
+</head>
+<body>
+<header>
+<div>
+<h1>Blind search relevance ratings</h1>
+<p class="muted">0 irrelevant · 1 weak · 2 good · 3 excellent</p>
+</div>
+<div>{completed}/{len(query_rows)} queries saved</div>
+</header>
+<nav>{links}</nav>
+<h2>{escape(str(query_row["query"]))}</h2>
+<p>Judge only the shuffled sheet. The system variant is hidden.</p>
+<img class="sheet" src="/sheet/{query_index}.jpg" alt="Blinded candidates">
+<form method="post" action="/save">
+<input type="hidden" name="query_index" value="{query_index}">
+<div class="ratings">{"".join(rating_rows)}</div>
+<button type="submit">Save and continue</button>
+</form>
+</body>
+</html>"""
+        encoded = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+
+def serve_ratings() -> None:
+    if not JUDGMENTS_PATH.exists():
+        raise FileNotFoundError("run with --prepare before serving ratings")
+    server = ThreadingHTTPServer((RATING_HOST, RATING_PORT), RatingHandler)
+    print(f"Rate blinded results at http://{RATING_HOST}:{RATING_PORT}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
 def main() -> None:
     if "--prepare" in sys.argv:
         _require_configuration()
         prepare()
+    elif "--serve" in sys.argv:
+        serve_ratings()
     else:
         evaluate()
 
