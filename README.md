@@ -750,9 +750,12 @@ Terraform apply order:
 
 ```bash
 cd infra/bootstrap
-# copy terraform.tfvars.example, then:
-terraform init
+# On the first account bootstrap, the state bucket does not exist yet.
+# Copy terraform.tfvars.example, then:
+terraform init -backend=false
 terraform apply
+# After the state bucket exists, copy backend.hcl.example and migrate:
+terraform init -migrate-state -backend-config=backend.hcl
 
 cd ../live
 # copy backend.hcl.example, tenant.tfvars.example, environment.tfvars.example

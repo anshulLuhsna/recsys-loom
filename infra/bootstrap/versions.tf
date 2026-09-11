@@ -7,6 +7,10 @@ terraform {
       version = "~> 5.80"
     }
   }
+
+  # Create the state bucket with an initial local apply, then migrate with:
+  # terraform init -migrate-state -backend-config=backend.hcl
+  backend "s3" {}
 }
 
 provider "aws" {
