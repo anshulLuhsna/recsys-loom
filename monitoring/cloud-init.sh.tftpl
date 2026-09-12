@@ -13,7 +13,20 @@ LAB_FAULT_LABEL="RECSYS_LAB_FAULTS"
 CANDIDATE_SSH_PUBLIC_KEY_BASE64="${candidate_ssh_public_key_base64}"
 
 apt-get update
-apt-get install -y ca-certificates curl gnupg awscli e2fsprogs git logrotate lsof
+apt-get install -y ca-certificates curl gnupg unzip e2fsprogs git logrotate lsof
+
+case "$(dpkg --print-architecture)" in
+  amd64) AWS_CLI_ARCH=x86_64 ;;
+  arm64) AWS_CLI_ARCH=aarch64 ;;
+  *) printf 'Unsupported architecture for AWS CLI: %s\n' "$(dpkg --print-architecture)" >&2; exit 1 ;;
+esac
+AWS_CLI_TMP=$(mktemp -d)
+curl --fail --silent --show-error --location --retry 5 \
+  "https://awscli.amazonaws.com/awscli-exe-linux-$AWS_CLI_ARCH.zip" \
+  -o "$AWS_CLI_TMP/awscliv2.zip"
+unzip -q "$AWS_CLI_TMP/awscliv2.zip" -d "$AWS_CLI_TMP"
+"$AWS_CLI_TMP/aws/install" --update
+rm -rf "$AWS_CLI_TMP"
 
 install -m 0755 -d /etc/apt/keyrings
 curl --fail --silent --show-error --location --retry 5 \
