@@ -32,7 +32,9 @@ data "aws_iam_policy_document" "github_ci_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.github_environment}"]
+      values = [
+        "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}:environment:${var.github_environment}"
+      ]
     }
   }
 }
