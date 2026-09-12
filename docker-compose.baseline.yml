@@ -1,0 +1,91 @@
+name: recsys-loom-baseline
+
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  api:
+    image: ${BACKEND_IMAGE:-recsys-loom-serving:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.serving
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    volumes:
+      - ${RELEASE_DIR:-.}/artifacts:/app/artifacts:ro
+      - ${RELEASE_DIR:-.}/articles.csv:/app/articles.csv:ro
+      - hf_cache:/var/cache/huggingface
+    environment:
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:3000}
+      CATALOG_PATH: /app/articles.csv
+      SEARCH_SEMANTIC: ${SEARCH_SEMANTIC:-0}
+      SEARCH_WARM_ON_READINESS: ${SEARCH_WARM_ON_READINESS:-1}
+      SEARCH_VISUAL: ${SEARCH_VISUAL:-0}
+      SEARCH_LLM: ${SEARCH_LLM:-0}
+      SEARCH_LLM_BASE_URL: ${SEARCH_LLM_BASE_URL:-https://api.groq.com/openai/v1}
+      SEARCH_LLM_API_KEY: ${SEARCH_LLM_API_KEY:-}
+      SEARCH_LLM_MODEL: ${SEARCH_LLM_MODEL:-llama-3.3-70b-versatile}
+      SEARCH_LLM_TIMEOUT_SECONDS: ${SEARCH_LLM_TIMEOUT_SECONDS:-4}
+      SEARCH_LLM_RERANK_LIMIT: ${SEARCH_LLM_RERANK_LIMIT:-30}
+      IMAGE_DIGEST: ${IMAGE_DIGEST:-local}
+      MODEL_VERSION: ${MODEL_VERSION:-BEST_SYSTEM}
+    mem_limit: 3g
+    cpus: 1.75
+    pids_limit: 512
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    logging: *bounded-logging
+    networks:
+      - backend
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.baseline:/etc/caddy/Caddyfile:ro
+      - ${IMAGES_DIR:-./images}:/srv/images:ro
+      - ${LOG_DIR:-./logs}/caddy:/var/log/caddy
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+    mem_limit: 192m
+    cpus: 0.25
+    pids_limit: 128
+    logging: *bounded-logging
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  hf_cache:

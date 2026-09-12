@@ -1,0 +1,15 @@
+[Unit]
+Description=RecSys Loom Docker lifecycle event recorder
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/opt/recsys-loom/app/docker-events.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/recsys-loom/logs/docker-events.log
+StandardError=append:/opt/recsys-loom/logs/docker-events.log
+
+[Install]
+WantedBy=multi-user.target

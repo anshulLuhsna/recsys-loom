@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec > >(tee -a /var/log/recsys-loom-bootstrap.log | logger -t recsys-loom-user-data -s 2>/dev/console) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+AWS_REGION="${aws_region}"
+LAB_FAULT_ENABLED="${lab_fault_enabled}"
+LAB_FAULT_VOLUME_ID="${lab_fault_volume_id}"
+LAB_FAULT_DEVICE_HINT="${lab_fault_device_name}"
+LAB_FAULT_MOUNT="/mnt/lab-faults"
+LAB_FAULT_LABEL="RECSYS_LAB_FAULTS"
+CANDIDATE_SSH_PUBLIC_KEY_BASE64="${candidate_ssh_public_key_base64}"
+
+apt-get update
+apt-get install -y ca-certificates curl gnupg awscli e2fsprogs git logrotate lsof
+
+install -m 0755 -d /etc/apt/keyrings
+curl --fail --silent --show-error --location --retry 5 \
+  https://download.docker.com/linux/ubuntu/gpg \
+  -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+
+. /etc/os-release
+printf '%s\n' \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" \
+  > /etc/apt/sources.list.d/docker.list
+
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+cat > /etc/docker/daemon.json <<'DOCKER_CONFIG'
+{
+  "live-restore": true,
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+DOCKER_CONFIG
+
+systemctl enable --now docker
+usermod -aG docker ubuntu
+
+if [ -n "$CANDIDATE_SSH_PUBLIC_KEY_BASE64" ]; then
+  useradd --create-home --shell /bin/bash candidate
+  install -d -m 0700 -o candidate -g candidate /home/candidate/.ssh
+  printf '%s' "$CANDIDATE_SSH_PUBLIC_KEY_BASE64" \
+    | base64 --decode \
+    > /home/candidate/.ssh/authorized_keys
+  chown candidate:candidate /home/candidate/.ssh/authorized_keys
+  chmod 0600 /home/candidate/.ssh/authorized_keys
+  usermod -aG docker,systemd-journal candidate
+fi
+
+install -d -m 0750 -o ubuntu -g ubuntu /opt/recsys-loom
+install -d -m 0750 -o ubuntu -g ubuntu /opt/recsys-loom/logs
+install -d -m 0755 /var/log/recsys-loom/caddy
+install -d -m 0755 "$LAB_FAULT_MOUNT"
+touch /opt/recsys-loom/logs/application.log /opt/recsys-loom/logs/deploy.log
+chown ubuntu:ubuntu /opt/recsys-loom/logs/application.log /opt/recsys-loom/logs/deploy.log
+chmod 0640 /opt/recsys-loom/logs/application.log /opt/recsys-loom/logs/deploy.log
+
+if ! systemctl enable --now amazon-ssm-agent.service; then
+  if command -v snap >/dev/null 2>&1; then
+    snap install amazon-ssm-agent --classic || true
+    systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service || true
+  fi
+fi
+
+if [ "$LAB_FAULT_ENABLED" = "true" ]; then
+  NORMALIZED_VOLUME_ID=$(printf '%s' "$LAB_FAULT_VOLUME_ID" | tr -d '-')
+  NVME_BY_ID="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_$NORMALIZED_VOLUME_ID"
+  XEN_DEVICE_HINT=$(printf '%s' "$LAB_FAULT_DEVICE_HINT" | sed 's#^/dev/sd#/dev/xvd#')
+  BASE_DEVICE=""
+
+  for _ in $(seq 1 60); do
+    LABELED_DEVICE=$(findfs "LABEL=$LAB_FAULT_LABEL" 2>/dev/null || true)
+    if [ -n "$LABELED_DEVICE" ]; then
+      BASE_DEVICE="$LABELED_DEVICE"
+      break
+    fi
+
+    if [ -e "$NVME_BY_ID" ]; then
+      BASE_DEVICE=$(readlink -f "$NVME_BY_ID")
+      break
+    fi
+
+    if [ -b "$LAB_FAULT_DEVICE_HINT" ]; then
+      BASE_DEVICE="$LAB_FAULT_DEVICE_HINT"
+      break
+    fi
+
+    if [ -b "$XEN_DEVICE_HINT" ]; then
+      BASE_DEVICE="$XEN_DEVICE_HINT"
+      break
+    fi
+
+    sleep 5
+  done
+
+  if [ -z "$BASE_DEVICE" ]; then
+    printf 'Lab-fault volume %s was not attached before the timeout.\n' "$LAB_FAULT_VOLUME_ID" >&2
+  else
+    PARTITION_DEVICE=$(lsblk -nrpo NAME,TYPE "$BASE_DEVICE" | awk '$2 == "part" { print $1; exit }')
+    TARGET_DEVICE="$BASE_DEVICE"
+    if [ -n "$PARTITION_DEVICE" ]; then
+      TARGET_DEVICE="$PARTITION_DEVICE"
+    fi
+
+    FILESYSTEM_TYPE=$(blkid -o value -s TYPE "$TARGET_DEVICE" 2>/dev/null || true)
+    if [ -z "$FILESYSTEM_TYPE" ]; then
+      mkfs.ext4 -F -L "$LAB_FAULT_LABEL" "$TARGET_DEVICE"
+      FILESYSTEM_TYPE="ext4"
+    fi
+
+    FILESYSTEM_LABEL=$(blkid -o value -s LABEL "$TARGET_DEVICE" 2>/dev/null || true)
+    if [ -z "$FILESYSTEM_LABEL" ]; then
+      case "$FILESYSTEM_TYPE" in
+        ext2|ext3|ext4)
+          e2label "$TARGET_DEVICE" "$LAB_FAULT_LABEL"
+          FILESYSTEM_LABEL="$LAB_FAULT_LABEL"
+          ;;
+      esac
+    fi
+
+    if [ -n "$FILESYSTEM_LABEL" ]; then
+      MOUNT_SPEC="LABEL=$FILESYSTEM_LABEL"
+    else
+      FILESYSTEM_UUID=$(blkid -o value -s UUID "$TARGET_DEVICE")
+      MOUNT_SPEC="UUID=$FILESYSTEM_UUID"
+    fi
+
+    awk '$2 != "/mnt/lab-faults" { print }' /etc/fstab > /etc/fstab.recsys-loom
+    printf '%s %s %s defaults,nofail,x-systemd.device-timeout=30 0 2\n' \
+      "$MOUNT_SPEC" "$LAB_FAULT_MOUNT" "$FILESYSTEM_TYPE" \
+      >> /etc/fstab.recsys-loom
+    mv /etc/fstab.recsys-loom /etc/fstab
+    systemctl daemon-reload
+    mount "$LAB_FAULT_MOUNT"
+    chown ubuntu:docker "$LAB_FAULT_MOUNT"
+    chmod 2775 "$LAB_FAULT_MOUNT"
+  fi
+fi
+
+CLOUDWATCH_AGENT_DEB="/tmp/amazon-cloudwatch-agent.deb"
+curl --fail --silent --show-error --location --retry 5 \
+  "https://amazoncloudwatch-agent-$AWS_REGION.s3.$AWS_REGION.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb" \
+  -o "$CLOUDWATCH_AGENT_DEB"
+dpkg -i "$CLOUDWATCH_AGENT_DEB" || apt-get install -f -y
+rm -f "$CLOUDWATCH_AGENT_DEB"
+
+install -d -m 0755 /opt/aws/amazon-cloudwatch-agent/etc
+printf '%s' '${cloudwatch_agent_config_base64}' \
+  | base64 --decode \
+  > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+chmod 0644 /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config \
+  -m ec2 \
+  -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+printf 'Bootstrap completed at %s\n' "$(date --iso-8601=seconds)" \
+  >> /opt/recsys-loom/logs/deploy.log

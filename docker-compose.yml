@@ -1,0 +1,32 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./images:/app/images:ro
+      - ./articles.csv:/app/articles.csv:ro
+    environment:
+      - RECSYS_HOST=0.0.0.0
+      - SEARCH_SEMANTIC=${SEARCH_SEMANTIC:-0}
+      - SEARCH_VISUAL=${SEARCH_VISUAL:-0}
+      - SEARCH_LLM=${SEARCH_LLM:-0}
+      - SEARCH_LLM_BASE_URL=${SEARCH_LLM_BASE_URL:-https://api.groq.com/openai/v1}
+      - SEARCH_LLM_API_KEY=${SEARCH_LLM_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - SEARCH_LLM_MODEL=${SEARCH_LLM_MODEL:-llama-3.3-70b-versatile}
+      - SEARCH_LLM_TIMEOUT_SECONDS=${SEARCH_LLM_TIMEOUT_SECONDS:-4}
+      - SEARCH_LLM_RERANK_LIMIT=${SEARCH_LLM_RERANK_LIMIT:-30}
+      - SEARCH_LLM_MAX_CALLS_PER_MINUTE=${SEARCH_LLM_MAX_CALLS_PER_MINUTE:-30}
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+    depends_on:
+      - api

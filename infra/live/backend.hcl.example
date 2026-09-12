@@ -1,0 +1,9 @@
+# Copy to backend.hcl after applying infra/bootstrap.
+# Terraform >= 1.10 uses the S3 .tflock object; DynamoDB is not required.
+# Authenticate with AWS SSO or an assumed OIDC role, not long-lived keys.
+
+bucket       = "replace-with-globally-unique-state-bucket"
+key          = "recsys-loom/demo/development/terraform.tfstate"
+region       = "ap-south-1"
+encrypt      = true
+use_lockfile = true

@@ -1,0 +1,45 @@
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MiB
+			roll_keep 3
+			roll_keep_for 168h
+		}
+		format json
+	}
+
+	@recommendationHealth path /health/recommendation
+	handle @recommendationHealth {
+		rewrite * /health/ready
+		reverse_proxy recommendation-api:8000
+	}
+
+	@searchHealth path /health/search
+	handle @searchHealth {
+		rewrite * /health/ready
+		reverse_proxy search-api:8000
+	}
+
+	@searchRoutes path /api/search /api/search/* /api/articles/*
+	handle @searchRoutes {
+		reverse_proxy search-api:8000
+	}
+
+	handle /images/* {
+		root * /srv
+		file_server
+	}
+
+	handle {
+		reverse_proxy recommendation-api:8000
+	}
+}

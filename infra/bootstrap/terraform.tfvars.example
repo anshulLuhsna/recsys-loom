@@ -1,0 +1,27 @@
+# Copy to terraform.tfvars and replace account-specific names.
+# Authenticate with AWS SSO or an assumed role; no access keys belong here.
+
+aws_region  = "ap-south-1"
+project_name = "recsys-loom"
+tenant_name  = "shared"
+
+state_bucket_name              = "replace-with-globally-unique-state-bucket"
+state_key_prefix               = "recsys-loom"
+state_force_destroy            = false
+serving_bundle_bucket_name     = "replace-with-globally-unique-bundle-bucket"
+serving_bundle_force_destroy = false
+deployment_config_prefix       = "ops"
+
+github_repository   = "anshulLuhsna/recsys-loom"
+github_branch       = "main"
+github_ci_role_name = "recsys-loom-github-ci"
+
+ecr_repository_names = [
+  "recsys-loom-recommendation",
+  "recsys-loom-search",
+]
+ecr_max_image_count = 20
+
+extra_tags = {
+  Owner = "replace-with-owner"
+}

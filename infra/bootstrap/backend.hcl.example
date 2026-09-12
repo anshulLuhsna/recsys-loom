@@ -1,0 +1,8 @@
+# Copy to backend.hcl after the initial bootstrap apply.
+# The bootstrap state then lives in the encrypted, versioned state bucket.
+
+bucket       = "replace-with-globally-unique-state-bucket"
+key          = "recsys-loom/bootstrap/terraform.tfstate"
+region       = "ap-south-1"
+encrypt      = true
+use_lockfile = true

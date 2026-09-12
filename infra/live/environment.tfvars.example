@@ -1,0 +1,31 @@
+# Copy to environment.tfvars. Use AWS SSO, OIDC, or environment-based
+# credentials; never add access keys to this file.
+
+aws_region  = "ap-south-1"
+environment = "development"
+
+vpc_cidr           = "10.20.0.0/16"
+public_subnet_cidr = "10.20.10.0/24"
+availability_zone  = null
+
+instance_type       = "t3.medium"
+root_volume_size_gib = 35
+
+# SSM Session Manager is the default administrative path.
+ssh_allowed_cidrs = []
+key_name          = null
+# For the interview lab, restrict ssh_allowed_cidrs to the candidate's /32,
+# set this public key, enable the fault volume, and destroy the tenant afterward.
+candidate_ssh_public_key = ""
+
+enable_lab_fault_volume   = false
+lab_fault_volume_size_gib = 8
+
+log_retention_days            = 14
+alarm_action_arns             = []
+cpu_alarm_threshold_percent   = 85
+cpu_credit_alarm_threshold    = 10
+memory_alarm_threshold_percent = 90
+swap_alarm_threshold_percent   = 20
+disk_alarm_threshold_percent  = 85
+inode_free_alarm_threshold    = 10000

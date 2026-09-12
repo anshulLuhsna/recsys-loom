@@ -1,0 +1,7 @@
+numpy==2.5.2
+torch
+transformers
+sentence-transformers
+fastapi
+uvicorn
+httpx
