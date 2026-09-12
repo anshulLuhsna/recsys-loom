@@ -248,7 +248,7 @@ jobs:
           }
           deploy_command="$(
             printf \
-              'set -euo pipefail; work=$(mktemp -d); aws s3 cp --only-show-errors %s "$work/config.tar.gz"; tar -xzf "$work/config.tar.gz" -C "$work"; sudo env API_DOMAIN=%s ALLOWED_ORIGINS=%s APP_DIR=/opt/recsys-loom/app "$work/ops/install-release.sh"; sudo env RECOMMENDATION_IMAGE=%s SEARCH_IMAGE=%s SERVING_BUNDLE_URI=%s SERVING_BUNDLE_VERSION=%s PUBLIC_BASE_URL=%s DEPLOYMENT_SHA=%s /opt/recsys-loom/app/deploy.sh; rm -rf "$work"' \
+              'set -eu; work=$(mktemp -d); aws s3 cp --only-show-errors %s "$work/config.tar.gz"; tar -xzf "$work/config.tar.gz" -C "$work"; sudo env API_DOMAIN=%s ALLOWED_ORIGINS=%s APP_DIR=/opt/recsys-loom/app "$work/ops/install-release.sh"; sudo env RECOMMENDATION_IMAGE=%s SEARCH_IMAGE=%s SERVING_BUNDLE_URI=%s SERVING_BUNDLE_VERSION=%s PUBLIC_BASE_URL=%s DEPLOYMENT_SHA=%s /opt/recsys-loom/app/deploy.sh; rm -rf "$work"' \
               "$(quote_for_sh "$DEPLOYMENT_CONFIG_URI")" \
               "$(quote_for_sh "${DEPLOY_PUBLIC_BASE_URL#https://}")" \
               "$(quote_for_sh "$ALLOWED_ORIGINS")" \
