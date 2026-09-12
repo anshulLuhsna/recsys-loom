@@ -91,6 +91,17 @@ variable "github_branch" {
   }
 }
 
+variable "github_environment" {
+  description = "GitHub Actions environment allowed to assume the CI role."
+  type        = string
+  default     = "production"
+
+  validation {
+    condition     = var.github_environment != ""
+    error_message = "github_environment must be non-empty."
+  }
+}
+
 variable "github_oidc_thumbprints" {
   description = "TLS certificate thumbprints accepted for GitHub's OIDC provider."
   type        = list(string)

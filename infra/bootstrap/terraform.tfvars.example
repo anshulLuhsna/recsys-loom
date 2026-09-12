@@ -14,6 +14,7 @@ deployment_config_prefix       = "ops"
 
 github_repository   = "anshulLuhsna/recsys-loom"
 github_branch       = "main"
+github_environment  = "production"
 github_ci_role_name = "recsys-loom-github-ci"
 
 ecr_repository_names = [
