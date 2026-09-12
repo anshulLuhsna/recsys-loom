@@ -31,7 +31,7 @@ output "github_ci_role_arn" {
 
 output "github_oidc_subject" {
   description = "Exact GitHub repository and environment subject trusted by the CI role."
-  value       = "repo:${var.github_repository}:environment:${var.github_environment}"
+  value       = "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}:environment:${var.github_environment}"
 }
 
 output "ecr_repository_arns" {

@@ -80,6 +80,26 @@ variable "github_repository" {
   }
 }
 
+variable "github_repository_owner_id" {
+  description = "Immutable numeric GitHub owner ID used in the repository OIDC subject."
+  type        = number
+
+  validation {
+    condition     = var.github_repository_owner_id > 0
+    error_message = "github_repository_owner_id must be a positive integer."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Immutable numeric GitHub repository ID used in the repository OIDC subject."
+  type        = number
+
+  validation {
+    condition     = var.github_repository_id > 0
+    error_message = "github_repository_id must be a positive integer."
+  }
+}
+
 variable "github_branch" {
   description = "Single GitHub branch allowed to assume the CI role."
   type        = string
