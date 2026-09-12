@@ -30,8 +30,8 @@ output "github_ci_role_arn" {
 }
 
 output "github_oidc_subject" {
-  description = "Exact GitHub repository and branch subject trusted by the CI role."
-  value       = "repo:${var.github_repository}:ref:refs/heads/${var.github_branch}"
+  description = "Exact GitHub repository and environment subject trusted by the CI role."
+  value       = "repo:${var.github_repository}:environment:${var.github_environment}"
 }
 
 output "ecr_repository_arns" {

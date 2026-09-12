@@ -14,7 +14,7 @@ data "aws_region" "current" {}
 
 data "aws_iam_policy_document" "github_ci_assume_role" {
   statement {
-    sid     = "GitHubRepositoryBranchOnly"
+    sid     = "GitHubRepositoryEnvironmentOnly"
     effect  = "Allow"
     actions = ["sts:AssumeRoleWithWebIdentity"]
 
@@ -32,7 +32,7 @@ data "aws_iam_policy_document" "github_ci_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/${var.github_branch}"]
+      values   = ["repo:${var.github_repository}:environment:${var.github_environment}"]
     }
   }
 }
